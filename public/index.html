@@ -308,6 +308,8 @@
   let SEL = { ref: '', telReg: false, correoReg: false }, EQ = [], timerBus = null, nBus = 0, idxSug = -1;
   const ETIQ_ESTADO = e => e === 'Distrito Capital' ? 'Distrito Capital (Caracas)' : e;
   const CAMPOS = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo', 'tipo', 'urgencias', 'descripcion', 'perifericos', 'licencia'];
+  const TIPOS_DEF = ['Corrección de falla', 'Instalación de periférico', 'Mantenimiento preventivo', 'Licencias'];
+  const PERIF_DEF = ['Impresora', 'Mico+', 'UltraAssist'];
   // Tipo de solicitud -> bloque que se muestra
   const BLOQUE = { 'Corrección de falla': 'bFalla', 'Instalación de periférico': 'bPerif', 'Mantenimiento preventivo': 'bMant', 'Licencias': 'bLic' };
 
@@ -340,8 +342,10 @@
           '<span><b>' + esc(p[0]) + '</b>' + esc((p[1] || '').trim()) + '</span><em class="tag">' + u.horas + ' h</em></label>';
       }).join('');
       document.querySelectorAll('input[name="urgencia"]').forEach(r => r.onchange = () => setErr('urgencias', ''));
-      (c.tipos || []).forEach(t => $('tipo').add(new Option(t, t)));
-      $('perifericos').innerHTML = (c.perifericos || []).map(p =>
+      // Si el backend aún no está actualizado, se usan las listas por defecto
+      if (!c.tipos) console.warn('El backend no envió los tipos de solicitud: publica la nueva versión de Code.gs en Apps Script.');
+      (c.tipos || TIPOS_DEF).forEach(t => $('tipo').add(new Option(t, t)));
+      $('perifericos').innerHTML = (c.perifericos || PERIF_DEF).map(p =>
         '<label class="choice"><input type="checkbox" name="periferico" value="' + esc(p) + '"><b>' + esc(p) + '</b></label>').join('');
       document.querySelectorAll('input[name="periferico"]').forEach(r => r.onchange = () => setErr('perifericos', ''));
       api('calentarDatos').catch(() => {});   // precarga clientes y equipos en segundo plano
