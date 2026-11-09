@@ -34,6 +34,21 @@ function excedeLimite(ip, fn) {
   return lista.length > max;
 }
 
+// Traduce la página de error de Google a un mensaje que diga qué arreglar
+function explicarFallo(status, html) {
+  const t = String(html || '');
+  if (/already been declared|ya se ha declarado|ya fue declarad/i.test(t))
+    return 'Apps Script tiene código repetido (hay dos archivos .gs con el mismo código). Deja un solo Code.gs y publica una nueva versión.';
+  if (/authoriz|autoriza|permis/i.test(t))
+    return 'Apps Script necesita permisos: en el editor ejecuta la función "autorizar", acepta los permisos y publica una nueva versión.';
+  if (/accounts\.google\.com|ServiceLogin|signin|Iniciar sesi/i.test(t))
+    return 'La implementación de Apps Script pide iniciar sesión: en "Quién tiene acceso" elige "Cualquier persona" y publica una nueva versión.';
+  if (status === 404 || /no se encontr|not found|unable to open|no se puede abrir/i.test(t))
+    return 'La URL de Apps Script no existe: revisa APPS_SCRIPT_URL en Vercel (debe ser la /exec de la implementación activa) y haz Redeploy.';
+  const titulo = (/<title>([^<]*)<\/title>/i.exec(t) || [])[1];
+  return 'El backend no respondió bien (' + status + (titulo ? ': ' + titulo.trim() : '') + '). Abre la URL /exec en el navegador para ver el error.';
+}
+
 function responder(res, status, data) {
   res.setHeader('Cache-Control', 'no-store');
   res.status(status).json(data);
@@ -82,11 +97,8 @@ export default async function handler(req, res) {
     const texto = await r.text();
     let data;
     try { data = JSON.parse(texto); } catch {
-      console.error('Respuesta no JSON de Apps Script', r.status, texto.slice(0, 300));
-      return responder(res, 502, {
-        ok: false,
-        error: 'El backend no respondió bien. Revisa que la implementación de Apps Script tenga acceso "Cualquier persona" y una versión publicada.'
-      });
+      console.error('Respuesta no JSON de Apps Script', r.status, texto.slice(0, 500));
+      return responder(res, 502, { ok: false, error: explicarFallo(r.status, texto) });
     }
     return responder(res, 200, data);
   } catch (e) {
