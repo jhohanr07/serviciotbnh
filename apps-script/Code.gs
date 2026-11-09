@@ -22,7 +22,7 @@ const EMPRESA = 'BNH Medical';
 const H_TICKETS = ['ID_Ticket', 'Fecha', 'Cliente', 'Contacto', 'Teléfono', 'Correo', 'Estado', 'Región',
   'Equipo', 'Serial', 'Descripción', 'Prioridad', 'Técnico asignado', 'Correo técnico', 'Estatus',
   'Fecha límite SLA', 'Fecha de atencion', 'Observaciones', 'Garantia', 'Fecha cierre',
-  'Atencion en sitio', 'Fecha de la visita', 'Última alerta'];
+  'Atencion en sitio', 'Fecha de la visita', 'Última alerta', 'Solicitud', 'Periféricos', 'Licencia'];
 const H_ESTADOS = ['Estado', 'Región'];
 const H_TECNICOS = ['Nombre', 'Región', 'Correo', 'Activo'];
 
@@ -40,6 +40,17 @@ const HORAS_SIN_RESPUESTA = 72;
 const HORAS_REPETIR_ALERTA = 24;
 const MINUTOS_REVISION = 15;
 const COL_ALERTA = 'Última alerta';
+
+// Tipos de solicitud del formulario. Solo "Corrección de falla" pide urgencia y descripción.
+const TIPO_FALLA = 'Corrección de falla';
+const TIPO_PERIFERICO = 'Instalación de periférico';
+const TIPO_MANTENIMIENTO = 'Mantenimiento preventivo';
+const TIPO_LICENCIA = 'Licencias';
+const TIPOS_SOLICITUD = [TIPO_FALLA, TIPO_PERIFERICO, TIPO_MANTENIMIENTO, TIPO_LICENCIA];
+// Periféricos que se pueden pedir (se puede marcar más de uno)
+const PERIFERICOS = ['Impresora', 'Mico+', 'UltraAssist'];
+// Prioridad que reciben las solicitudes que no son falla (define su fecha límite)
+const PRIORIDAD_SIN_FALLA = 'P4';
 
 // Tiempo objetivo de resolución en horas corridas
 const URGENCIAS = [
@@ -213,6 +224,7 @@ function configurarHojas() {
   sE.getRange('B2:B200').setDataValidation(regla(REGIONES));
   sTec.getRange('D2:D200').setDataValidation(regla(['SI', 'NO']));
   sT.getRange(2, colDe_(sT, 'Estatus'), 4999, 1).setDataValidation(regla(ESTATUS));
+  sT.getRange(2, colDe_(sT, 'Solicitud'), 4999, 1).setDataValidation(regla(TIPOS_SOLICITUD));
 
   SpreadsheetApp.getUi().alert(
     'Hojas listas.\n\n1) Escribe los nombres y correos reales en la hoja TECNICOS.\n' +
@@ -366,7 +378,7 @@ function getFormConfig() {
     const estados = leer_('ESTADOS').map(function (e) { return String(e['Estado']); })
       .sort(function (a, b) { return a.localeCompare(b, 'es'); });
     const urgencias = URGENCIAS.map(function (u) { return { id: u.id, texto: u.texto, horas: u.horas }; });
-    return { ok: true, estados: estados, urgencias: urgencias };
+    return { ok: true, estados: estados, urgencias: urgencias, tipos: TIPOS_SOLICITUD, perifericos: PERIFERICOS };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -390,14 +402,36 @@ function crearTicket(d) {
       if (!v.telefono) v.telefono = reg.tel;
       if (!v.correo) v.correo = String(reg.correo || '').toLowerCase();
     }
-    const faltan = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo', 'urgencia', 'descripcion']
+    const faltan = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo']
       .filter(function (k) { return !v[k]; });
     if (faltan.length) return { ok: false, error: 'Completa los campos obligatorios.', campos: faltan };
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.correo)) return { ok: false, error: 'El correo no es válido.', campos: ['correo'] };
-    if (v.descripcion.length < 10) return { ok: false, error: 'Describe la falla con un poco más de detalle.', campos: ['descripcion'] };
 
-    const urg = URGENCIAS.filter(function (u) { return u.id === v.urgencia; })[0];
-    if (!urg) return { ok: false, error: 'Selecciona la urgencia.', campos: ['urgencia'] };
+    // Tipo de solicitud y sus datos propios
+    v.tipo = String(d.tipo || '').trim();
+    if (TIPOS_SOLICITUD.indexOf(v.tipo) < 0) return { ok: false, error: 'Elige el tipo de solicitud.', campos: ['tipo'] };
+    v.perifericos = '';
+    v.licencia = '';
+    let urg;
+    if (v.tipo === TIPO_FALLA) {
+      urg = URGENCIAS.filter(function (u) { return u.id === v.urgencia; })[0];
+      if (!urg) return { ok: false, error: 'Selecciona la urgencia.', campos: ['urgencia'] };
+      if (v.descripcion.length < 10) return { ok: false, error: 'Describe la falla con un poco más de detalle.', campos: ['descripcion'] };
+    } else {
+      urg = URGENCIAS.filter(function (u) { return u.id === PRIORIDAD_SIN_FALLA; })[0];
+      if (v.tipo === TIPO_PERIFERICO) {
+        const elegidos = (Array.isArray(d.perifericos) ? d.perifericos : [])
+          .map(function (x) { return String(x); }).filter(function (x) { return PERIFERICOS.indexOf(x) >= 0; });
+        if (!elegidos.length) return { ok: false, error: 'Marca al menos un periférico.', campos: ['perifericos'] };
+        v.perifericos = PERIFERICOS.filter(function (x) { return elegidos.indexOf(x) >= 0; }).join(', ');
+      }
+      if (v.tipo === TIPO_LICENCIA) {
+        v.licencia = String(d.licencia || '').trim().slice(0, 200);
+        if (!v.licencia) return { ok: false, error: 'Escribe el nombre de la licencia.', campos: ['licencia'] };
+      }
+      // La descripción guarda un resumen legible para panel, correos y alertas
+      v.descripcion = resumenSolicitud_(v.tipo, v.perifericos, v.licencia, '');
+    }
 
     const fe = leer_('ESTADOS').filter(function (e) { return e['Estado'] === v.estado; })[0];
     if (!fe) return { ok: false, error: 'El estado seleccionado no es válido.', campos: ['estado'] };
@@ -406,6 +440,8 @@ function crearTicket(d) {
     lock = LockService.getScriptLock();
     lock.waitLock(20000);
 
+    const shT = hoja_('TICKETS');
+    ['Solicitud', 'Periféricos', 'Licencia'].forEach(function (c) { asegurarColumna_(shT, c); });
     const tickets = leer_('TICKETS');
     let max = 0;
     tickets.forEach(function (t) {
@@ -430,13 +466,13 @@ function crearTicket(d) {
     const ahora = new Date();
     const limite = new Date(ahora.getTime() + urg.horas * 3600000);
 
-    appendPorEncabezado_(hoja_('TICKETS'), {
+    appendPorEncabezado_(shT, {
       'ID_Ticket': id, 'Fecha': ahora, 'Cliente': seguro_(v.cliente), 'Contacto': seguro_(v.contacto),
       'Teléfono': texto_(v.telefono), 'Correo': seguro_(v.correo), 'Estado': v.estado, 'Región': region,
       'Equipo': seguro_(v.equipo), 'Serial': texto_(v.serial), 'Descripción': seguro_(v.descripcion),
       'Prioridad': urg.id, 'Técnico asignado': tec ? tec['Nombre'] : '',
       'Correo técnico': tec ? tec['Correo'] : '', 'Estatus': tec ? 'Asignado' : 'Sin asignar',
-      'Fecha límite SLA': limite
+      'Fecha límite SLA': limite, 'Solicitud': v.tipo, 'Periféricos': v.perifericos, 'Licencia': seguro_(v.licencia)
     });
     SpreadsheetApp.flush();
     lock.releaseLock();
@@ -459,6 +495,16 @@ function appendPorEncabezado_(sh, obj) {
   }));
 }
 
+// Texto corto que describe la solicitud (los tickets viejos no tienen tipo: se tratan como falla)
+function tipoDe_(t) { return String(t['Solicitud'] || '').trim() || TIPO_FALLA; }
+function resumenSolicitud_(tipo, perifericos, licencia, descripcion) {
+  if (tipo === TIPO_PERIFERICO) return 'Instalación de periférico: ' + perifericos;
+  if (tipo === TIPO_LICENCIA) return 'Licencia solicitada: ' + licencia;
+  if (tipo === TIPO_MANTENIMIENTO) return 'Mantenimiento preventivo del equipo.';
+  return String(descripcion || '');
+}
+function tituloBloque_(tipo) { return tipo === TIPO_FALLA ? 'Falla reportada:' : 'Solicitud:'; }
+
 /* ===================== CONSULTA PÚBLICA DEL CLIENTE ===================== */
 
 // Pide número de ticket + correo del reporte. Nunca devuelve observaciones internas.
@@ -478,7 +524,8 @@ function consultarTicket(id, correo) {
     const tec = String(t['Técnico asignado'] || '').trim();
     return {
       ok: true, id: id, fecha: fmt_(t['Fecha']), equipo: String(t['Equipo']), serial: String(t['Serial'] || ''),
-      estado: String(t['Estado']), region: String(t['Región']), prioridad: urgencia_(String(t['Prioridad'])).texto.split(':')[0],
+      solicitud: tipoDe_(t), detalle: String(t['Periféricos'] || '') || String(t['Licencia'] || ''),
+      estado: String(t['Estado']), region: String(t['Región']), prioridad: tipoDe_(t) === TIPO_FALLA ? urgencia_(String(t['Prioridad'])).texto.split(':')[0] : '',
       estatus: est, tecnico: tec ? tec.split(/\s+/)[0] : '',
       atencion: fmtDia_(t['Fecha de atencion']), visita: fmtDia_(t['Fecha de la visita']), cierre: fmtDia_(t['Fecha cierre']),
       cerrado: ESTATUS_CERRADOS.indexOf(est) >= 0
@@ -541,23 +588,23 @@ function enlaceEstado_(id) {
   return enlace_('estado', { id: id });
 }
 
-// c = {id, cliente, contacto, telefono, estado, region, equipo, serial, prioridad, urgTexto, limite, descripcion}
+// c = {id, tipo, cliente, contacto, telefono, estado, region, equipo, serial, prioridad, urgTexto, limite, descripcion}
 function enviarTecnico_(c, tec, reenvio) {
   const link = enlaceTecnico_(c.id);
   MailApp.sendEmail({
     to: tec['Correo'],
-    subject: '[' + EMPRESA + '] ' + (reenvio ? 'Recordatorio: ticket ' : 'Nuevo ticket ') + c.id + ' (' + c.prioridad + ')',
+    subject: '[' + EMPRESA + '] ' + (reenvio ? 'Recordatorio: ticket ' : 'Nuevo ticket ') + c.id + ' · ' + (c.tipo || TIPO_FALLA) + ' (' + c.prioridad + ')',
     htmlBody: correoHtml_({
       titulo: (reenvio ? 'Ticket ' : 'Nuevo ticket ') + c.id,
       subtitulo: reenvio ? 'Coordinación te reenvía este caso.' : 'Se te asignó un caso de servicio técnico.',
-      filas: [['Cliente', c.cliente], ['Contacto', c.contacto + ' / ' + c.telefono],
+      filas: [['Solicitud', c.tipo || TIPO_FALLA], ['Cliente', c.cliente], ['Contacto', c.contacto + ' / ' + c.telefono],
         ['Ubicación', c.estado + ' (Región ' + c.region + ')'],
         ['Equipo', c.equipo + (c.serial ? ' (serial ' + c.serial + ')' : '')],
         ['Prioridad', c.prioridad + ' - ' + c.urgTexto], ['Fecha límite', c.limite]],
-      bloque: { titulo: 'Falla reportada:', texto: c.descripcion },
+      bloque: { titulo: tituloBloque_(c.tipo || TIPO_FALLA), texto: c.descripcion },
       boton: { texto: 'Abrir ticket', url: link }
     }),
-    body: 'Ticket ' + c.id + '\nCliente: ' + c.cliente + '\nEquipo: ' + c.equipo + '\nPrioridad: ' + c.prioridad +
+    body: 'Ticket ' + c.id + ' · ' + (c.tipo || TIPO_FALLA) + '\nCliente: ' + c.cliente + '\nEquipo: ' + c.equipo + '\nPrioridad: ' + c.prioridad +
       '\n\n' + c.descripcion + '\n\nAbrir ticket: ' + link
   });
 }
@@ -565,31 +612,32 @@ function enviarTecnico_(c, tec, reenvio) {
 function datosCorreo_(t) {
   const u = urgencia_(String(t['Prioridad']));
   return {
-    id: String(t['ID_Ticket']), cliente: t['Cliente'], contacto: t['Contacto'], telefono: t['Teléfono'],
+    id: String(t['ID_Ticket']), tipo: tipoDe_(t), cliente: t['Cliente'], contacto: t['Contacto'], telefono: t['Teléfono'],
     estado: t['Estado'], region: t['Región'], equipo: t['Equipo'], serial: t['Serial'],
     prioridad: t['Prioridad'], urgTexto: u.texto, limite: fmt_(t['Fecha límite SLA']), descripcion: t['Descripción']
   };
 }
 
 function notificarNuevo_(id, v, region, urg, limite, tec) {
-  const filas = [['Ticket', id], ['Cliente', v.cliente], ['Contacto', v.contacto + ' / ' + v.telefono],
+  const bloque = { titulo: tituloBloque_(v.tipo), texto: v.descripcion };
+  const filas = [['Ticket', id], ['Solicitud', v.tipo], ['Cliente', v.cliente], ['Contacto', v.contacto + ' / ' + v.telefono],
     ['Ubicación', v.estado + ' (Región ' + region + ')'], ['Equipo', v.equipo + (v.serial ? ' (serial ' + v.serial + ')' : '')],
     ['Prioridad', urg.id + ' - ' + urg.texto], ['Fecha límite objetivo', fmt_(limite)]];
 
   // 1) Cliente
   try {
     MailApp.sendEmail({
-      to: v.correo, subject: '[' + EMPRESA + '] Recibimos tu reporte ' + id,
+      to: v.correo, subject: '[' + EMPRESA + '] Recibimos tu solicitud ' + id,
       htmlBody: correoHtml_({
-        titulo: 'Recibimos tu reporte ' + id,
+        titulo: 'Recibimos tu solicitud ' + id,
         subtitulo: 'Hola ' + v.contacto + ', ' + (tec ? 'tu caso ya está asignado a nuestro equipo de la región ' + region + '.'
           : 'en breve asignaremos tu caso a un técnico.'),
-        filas: filas, bloque: { titulo: 'Falla reportada:', texto: v.descripcion },
+        filas: filas, bloque: bloque,
         boton: { texto: 'Ver estado del ticket', url: enlaceEstado_(id) },
         pie: 'Para consultar el estado necesitarás el número de ticket y este correo.'
       }),
-      body: 'Hola ' + v.contacto + ',\n\nRecibimos tu reporte. Tu número de ticket es ' + id +
-        '.\nConsulta el estado en: ' + enlaceEstado_(id) + '\n\nFalla reportada:\n' + v.descripcion
+      body: 'Hola ' + v.contacto + ',\n\nRecibimos tu solicitud (' + v.tipo + '). Tu número de ticket es ' + id +
+        '.\nConsulta el estado en: ' + enlaceEstado_(id) + '\n\n' + bloque.titulo + '\n' + v.descripcion
     });
   } catch (e) { console.error('Correo al cliente: ' + e.message); }
 
@@ -597,7 +645,7 @@ function notificarNuevo_(id, v, region, urg, limite, tec) {
   if (tec && tec['Correo']) {
     try {
       enviarTecnico_({
-        id: id, cliente: v.cliente, contacto: v.contacto, telefono: v.telefono, estado: v.estado,
+        id: id, tipo: v.tipo, cliente: v.cliente, contacto: v.contacto, telefono: v.telefono, estado: v.estado,
         region: region, equipo: v.equipo, serial: v.serial, prioridad: urg.id, urgTexto: urg.texto,
         limite: fmt_(limite), descripcion: v.descripcion
       }, tec);
@@ -613,7 +661,7 @@ function notificarNuevo_(id, v, region, urg, limite, tec) {
         htmlBody: correoHtml_({
           color: '#b3261e', titulo: 'Ticket ' + id + ' sin técnico',
           subtitulo: 'No hay técnico activo en la región ' + region + '. Asígnalo desde el panel.',
-          filas: filas, bloque: { titulo: 'Falla reportada:', texto: v.descripcion },
+          filas: filas, bloque: bloque,
           boton: { texto: 'Abrir panel', url: enlace_('panel') }
         }),
         body: 'No hay técnico activo en la región ' + region + '. Asigna el ticket ' + id + ' desde el panel.'
@@ -667,6 +715,7 @@ function getTicketTecnico(id, tk) {
       telefono: String(t['Teléfono']), correo: String(t['Correo']), estado: String(t['Estado']),
       region: String(t['Región']), equipo: String(t['Equipo']), serial: String(t['Serial']),
       descripcion: String(t['Descripción']), prioridad: String(t['Prioridad']),
+      solicitud: tipoDe_(t), perifericos: String(t['Periféricos'] || ''), licencia: String(t['Licencia'] || ''),
       urgencia: urgencia_(String(t['Prioridad'])).texto,
       tecnico: String(t['Técnico asignado']), estatus: est, limite: fmt_(t['Fecha límite SLA']),
       vencido: ESTATUS_ABIERTOS.indexOf(est) >= 0 && (ms_(t['Fecha límite SLA']) || Infinity) < Date.now(),
@@ -972,6 +1021,7 @@ function getPanelData(clave) {
         correo: String(t['Correo']), estado: String(t['Estado']), region: String(t['Región']),
         equipo: String(t['Equipo']), serial: String(t['Serial']), descripcion: String(t['Descripción']),
         prioridad: String(t['Prioridad']), tecnico: String(t['Técnico asignado'] || ''), estatus: est,
+        solicitud: tipoDe_(t), perifericos: String(t['Periféricos'] || ''), licencia: String(t['Licencia'] || ''),
         limite: fmt_(t['Fecha límite SLA']), cierre: fmt_(t['Fecha cierre']), obs: String(t['Observaciones'] || ''),
         atencion: fmt_(t['Fecha de atencion']), sitio: String(t['Atencion en sitio'] || ''),
         visita: fmt_(t['Fecha de la visita']), garantia: String(t['Garantia'] || ''), alerta: fmt_(t[COL_ALERTA]),
@@ -1074,7 +1124,7 @@ function getDashboardData(clave) {
         id: String(t['ID_Ticket']), fecha: fecha ? fecha.getTime() : null,
         cliente: String(t['Cliente']), equipo: String(t['Equipo']), serial: String(t['Serial']),
         estado: String(t['Estado']), region: String(t['Región']), prioridad: String(t['Prioridad']),
-        tecnico: String(t['Técnico asignado'] || ''), estatus: String(t['Estatus']),
+        tecnico: String(t['Técnico asignado'] || ''), estatus: String(t['Estatus']), solicitud: tipoDe_(t),
         limite: ms_(t['Fecha límite SLA']), atencion: atencion ? atencion.getTime() : null,
         // Días calendario entre el reporte y la fecha de atención (0 = el mismo día)
         respDias: fecha && atencion ? Math.max(0, diaN_(atencion) - diaN_(fecha)) : null,
@@ -1088,7 +1138,7 @@ function getDashboardData(clave) {
     });
     return {
       ok: true, ahora: Date.now(), tickets: tickets, tecnicos: tecnicos, regiones: REGIONES,
-      abiertos: ESTATUS_ABIERTOS, sinRespuesta: ESTATUS_SIN_RESPUESTA,
+      abiertos: ESTATUS_ABIERTOS, sinRespuesta: ESTATUS_SIN_RESPUESTA, tipos: TIPOS_SOLICITUD,
       horasAlerta: HORAS_SIN_RESPUESTA, horasRepetir: HORAS_REPETIR_ALERTA,
       minutosRevision: MINUTOS_REVISION, alertasActivas: alertasActivas_()
     };
@@ -1193,11 +1243,11 @@ function procesarAlertas_() {
 function enviarAlerta_(t, dias, tecnico, correoTec, admin) {
   const id = String(t['ID_Ticket']);
   const asunto = '[' + EMPRESA + '] ALERTA: ticket ' + id + ' lleva ' + dias + ' días sin respuesta';
-  const filas = [['Cliente', t['Cliente']], ['Contacto', t['Contacto'] + ' / ' + t['Teléfono']],
+  const filas = [['Solicitud', tipoDe_(t)], ['Cliente', t['Cliente']], ['Contacto', t['Contacto'] + ' / ' + t['Teléfono']],
     ['Ubicación', t['Estado'] + ' (Región ' + t['Región'] + ')'],
     ['Equipo', t['Equipo'] + (t['Serial'] ? ' (serial ' + t['Serial'] + ')' : '')],
     ['Prioridad', t['Prioridad']], ['Reportado', fmt_(t['Fecha'])], ['Fecha límite', fmt_(t['Fecha límite SLA'])]];
-  const bloque = { titulo: 'Falla reportada:', texto: t['Descripción'] };
+  const bloque = { titulo: tituloBloque_(tipoDe_(t)), texto: t['Descripción'] };
 
   if (correoTec) {
     const link = enlaceTecnico_(id);
