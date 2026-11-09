@@ -13,7 +13,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/estilos.css">
 <style>
-  .filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 16px; }
+  .filters { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 16px; }
   @media (max-width: 900px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .filters label { font-size: 12.5px; color: var(--muted); }
   .filters input, .filters select { min-height: 40px; padding: 8px 10px; font-size: 14px; }
@@ -102,6 +102,7 @@
       <div><label for="fReg">Región</label><select id="fReg"></select></div>
       <div><label for="fTec">Técnico</label><select id="fTec"></select></div>
       <div><label for="fPri">Prioridad</label><select id="fPri"></select></div>
+      <div><label for="fSol">Solicitud</label><select id="fSol"></select></div>
       <div><button class="btn ghost sm" id="btnLimpiar" type="button" style="min-height:40px">Quitar filtros</button></div>
     </div>
     <div id="cargaErr" class="msg err" hidden role="alert" style="margin:0 0 16px"></div>
@@ -244,14 +245,15 @@
     poner('fReg', 'Todas', D.regiones);
     poner('fTec', 'Todos', tecs.concat(['Sin asignar']));
     poner('fPri', 'Todas', ['P1', 'P2', 'P3', 'P4']);
+    poner('fSol', 'Todas', D.tipos || []);
   }
 
   function filtrados() {
     const de = $('fDesde').value ? new Date($('fDesde').value + 'T00:00:00').getTime() : null;
     const ha = $('fHasta').value ? new Date($('fHasta').value + 'T23:59:59').getTime() : null;
-    const reg = $('fReg').value, tec = $('fTec').value, pri = $('fPri').value;
+    const reg = $('fReg').value, tec = $('fTec').value, pri = $('fPri').value, sol = $('fSol').value;
     return T.filter(t => (!de || (t.fecha && t.fecha >= de)) && (!ha || (t.fecha && t.fecha <= ha)) &&
-      (!reg || t.region === reg) && (!tec || t.tec === tec) && (!pri || t.prioridad === pri));
+      (!reg || t.region === reg) && (!tec || t.tec === tec) && (!pri || t.prioridad === pri) && (!sol || t.solicitud === sol));
   }
 
   /* ---------- Render ---------- */
@@ -458,6 +460,7 @@
       { k: 'id', t: 'Ticket', v: t => t.fecha, f: t => '<b>' + esc(t.id) + '</b><small>' + fFecha(t.fecha) + '</small>' },
       { k: 'cliente', t: 'Cliente', f: t => esc(t.cliente) + '<small>' + esc(t.estado) + ' · ' + esc(t.region) + '</small>' },
       { k: 'equipo', t: 'Equipo', f: t => esc(t.equipo) + (t.serial ? '<small>Serial ' + esc(t.serial) + '</small>' : '') },
+      { k: 'solicitud', t: 'Solicitud', f: t => esc(t.solicitud) },
       { k: 'tec', t: 'Técnico', f: t => t.tecnico ? esc(t.tecnico) : '<span class="venc">Sin técnico</span>' },
       { k: 'prioridad', t: 'Prioridad', f: t => '<span class="' + clsPri(t.prioridad) + '">' + esc(t.prioridad) + '</span>' },
       { k: 'estatus', t: 'Estatus', f: t => badge(t.estatus) + (t.vencido ? '<small class="venc">SLA vencido</small>' : '') },
@@ -475,7 +478,7 @@
     if (!D) return;
     const rows = casosVisibles(filtrados());
     const cols = [['Ticket', t => t.id], ['Fecha', t => fFecha(t.fecha)], ['Cliente', t => t.cliente], ['Estado', t => t.estado], ['Región', t => t.region],
-      ['Equipo', t => t.equipo], ['Serial', t => t.serial], ['Técnico', t => t.tecnico], ['Prioridad', t => t.prioridad], ['Estatus', t => t.estatus],
+      ['Equipo', t => t.equipo], ['Serial', t => t.serial], ['Solicitud', t => t.solicitud], ['Técnico', t => t.tecnico], ['Prioridad', t => t.prioridad], ['Estatus', t => t.estatus],
       ['Atención', t => fFecha(t.atencion)], ['Cierre', t => fFecha(t.cierre)], ['Respuesta (días)', t => t.respDias == null ? '' : t.respDias],
       ['Garantía', t => t.garantia], ['En sitio', t => t.enSitio ? 'Sí' : 'No'], ['SLA vencido', t => t.vencido ? 'Sí' : 'No']];
     const q = v => { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -510,8 +513,8 @@
   $('btnRef').onclick = () => cargar(true);
   $('btnCsv').onclick = exportarCsv;
   $('btnAlertas').onclick = enviarAlertas;
-  ['fDesde', 'fHasta', 'fReg', 'fTec', 'fPri'].forEach(id => $(id).onchange = render);
-  $('btnLimpiar').onclick = () => { ['fDesde', 'fHasta', 'fReg', 'fTec', 'fPri'].forEach(id => $(id).value = ''); render(); };
+  ['fDesde', 'fHasta', 'fReg', 'fTec', 'fPri', 'fSol'].forEach(id => $(id).onchange = render);
+  $('btnLimpiar').onclick = () => { ['fDesde', 'fHasta', 'fReg', 'fTec', 'fPri', 'fSol'].forEach(id => $(id).value = ''); render(); };
   setInterval(() => { if (D && document.visibilityState === 'visible') cargar(); }, 120000);
 
   const guardada = Sesion.get();

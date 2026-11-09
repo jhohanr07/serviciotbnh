@@ -28,6 +28,9 @@
   .foot-note { text-align: center; color: var(--muted); font-size: 14px; margin-top: 16px; }
   .submit-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 22px; }
   .submit-row .hint { margin: 0; }
+  .cond:not([hidden]) { animation: entrar .2s var(--ease); }
+  .checks .choice { align-items: center; }
+  .checks .choice b { font-weight: 600; }
   .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
   /* Línea de tiempo del estado */
@@ -68,9 +71,9 @@
 <section id="vForm" class="narrow" hidden>
   <div id="formBox">
     <div class="intro">
-      <div class="eyebrow">Reporte de fallas</div>
-      <h1 class="page-title">Reporta la falla de tu equipo</h1>
-      <p class="lead">Asignamos tu caso al técnico de tu región y te enviamos el número de ticket por correo.</p>
+      <div class="eyebrow">Solicitud de servicio</div>
+      <h1 class="page-title">Solicita servicio técnico para tu equipo</h1>
+      <p class="lead">Reporta una falla o pide instalación, mantenimiento o licencias. Asignamos tu caso al técnico de tu región y te enviamos el número de ticket por correo.</p>
     </div>
 
     <form id="frm" class="card" novalidate>
@@ -127,7 +130,15 @@
       </fieldset>
 
       <fieldset>
-        <legend><span class="num" aria-hidden="true">3</span>La falla</legend>
+        <legend><span class="num" aria-hidden="true">3</span>La solicitud</legend>
+        <div class="field">
+          <label for="tipo">Solicitud de <span class="req" aria-hidden="true">*</span></label>
+          <select id="tipo" aria-describedby="tipoHint tipoErr"><option value="">Selecciona…</option></select>
+          <div class="hint" id="tipoHint">Elige qué necesitas y te pediremos solo los datos de ese tipo de solicitud.</div>
+          <div class="ferr" id="tipoErr"></div>
+        </div>
+
+        <div class="cond" id="bFalla" hidden>
         <div class="field">
           <div class="label" id="urgLbl">¿Qué tan urgente es? <span class="req" aria-hidden="true">*</span></div>
           <div class="choices" id="urgencias" role="radiogroup" aria-labelledby="urgLbl" aria-describedby="urgenciasErr"></div>
@@ -138,6 +149,21 @@
           <textarea id="descripcion" maxlength="1500" placeholder="Describe la falla, mensajes de error y desde cuándo ocurre…" aria-describedby="descripcionErr"></textarea>
           <div class="ferr" id="descripcionErr"></div>
         </div>
+        </div>
+
+        <div class="cond field" id="bPerif" hidden>
+          <div class="label" id="perifLbl">¿Qué periférico hay que instalar? <span class="req" aria-hidden="true">*</span> <span class="opt-txt">(puedes marcar varios)</span></div>
+          <div class="choices checks" id="perifericos" role="group" aria-labelledby="perifLbl" aria-describedby="perifericosErr"></div>
+          <div class="ferr" id="perifericosErr"></div>
+        </div>
+
+        <div class="cond" id="bMant" hidden></div>
+
+        <div class="cond field" id="bLic" hidden>
+          <label for="licencia">Nombre de la licencia <span class="req" aria-hidden="true">*</span></label>
+          <input id="licencia" maxlength="200" autocomplete="off" placeholder="Ej.: licencia de elastografía…" aria-describedby="licenciaErr">
+          <div class="ferr" id="licenciaErr"></div>
+        </div>
       </fieldset>
 
       <div class="hp" aria-hidden="true"><label for="web">No llenar</label><input id="web" tabindex="-1" autocomplete="off"></div>
@@ -147,19 +173,19 @@
         <span class="hint">Los campos con <span class="req">*</span> son obligatorios.</span>
       </div>
     </form>
-    <p class="foot-note">¿Ya reportaste una falla? <a id="lnkConsulta">Consulta el estado de tu ticket</a></p>
+    <p class="foot-note">¿Ya hiciste una solicitud? <a id="lnkConsulta">Consulta el estado de tu ticket</a></p>
   </div>
 
   <div class="card done" id="doneBox" hidden tabindex="-1">
     <div class="check" aria-hidden="true">✓</div>
-    <h2>Reporte recibido</h2>
+    <h2>Solicitud recibida</h2>
     <p class="lead">Tu número de ticket es</p>
     <div class="tk" id="tkId"></div>
     <p id="tkTxt" class="lead"></p>
     <div class="row">
       <button class="btn ghost" id="btnCopiarTk" type="button">Copiar número</button>
       <a class="btn ghost" id="lnkVerEstado">Ver estado</a>
-      <button class="btn" id="btnOtro" type="button">Reportar otra falla</button>
+      <button class="btn" id="btnOtro" type="button">Hacer otra solicitud</button>
     </div>
   </div>
 </section>
@@ -264,13 +290,13 @@
   const VISTA = RUTA === 'panel' ? 'panel' : RUTA === 'estado' ? 'estado' : 'form';
   const BASE = '';
   const TICKET_URL = (/^TK-\d+$/i.test(new URLSearchParams(location.search).get('id') || '') ? new URLSearchParams(location.search).get('id').toUpperCase() : '');
-  document.title = { form: 'Reportar falla de equipo', estado: 'Estado de mi ticket', panel: 'Panel de servicio técnico' }[VISTA] + ' · BNH Medical';
+  document.title = { form: 'Solicitud de servicio técnico', estado: 'Estado de mi ticket', panel: 'Panel de servicio técnico' }[VISTA] + ' · BNH Medical';
 
   /* ---------------- NAVEGACIÓN ---------------- */
   function pintarNav() {
     const links = VISTA === 'panel'
       ? [['panel', 'Casos', '/panel'], ['dashboard', 'Dashboard', '/dashboard']]
-      : [['form', 'Reportar falla', '/'], ['estado', 'Consultar ticket', '/estado']];
+      : [['form', 'Nueva solicitud', '/'], ['estado', 'Consultar ticket', '/estado']];
     $('nav').innerHTML = links.map(l => '<a href="' + esc(BASE + l[2]) + '"' + (l[0] === VISTA ? ' aria-current="page"' : '') + '>' + l[1] + '</a>').join('') +
       (VISTA === 'panel' && Sesion.get() ? '<button type="button" id="btnSalir">Salir</button>' : '');
     const s = $('btnSalir');
@@ -281,12 +307,22 @@
   /* ---------------- FORMULARIO ---------------- */
   let SEL = { ref: '', telReg: false, correoReg: false }, EQ = [], timerBus = null, nBus = 0, idxSug = -1;
   const ETIQ_ESTADO = e => e === 'Distrito Capital' ? 'Distrito Capital (Caracas)' : e;
-  const CAMPOS = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo', 'urgencias', 'descripcion'];
+  const CAMPOS = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo', 'tipo', 'urgencias', 'descripcion', 'perifericos', 'licencia'];
+  // Tipo de solicitud -> bloque que se muestra
+  const BLOQUE = { 'Corrección de falla': 'bFalla', 'Instalación de periférico': 'bPerif', 'Mantenimiento preventivo': 'bMant', 'Licencias': 'bLic' };
+
+  function mostrarBloque() {
+    const t = $('tipo').value;
+    ['bFalla', 'bPerif', 'bMant', 'bLic'].forEach(id => $(id).hidden = BLOQUE[t] !== id);
+    ['urgencias', 'descripcion', 'perifericos', 'licencia'].forEach(c => setErr(c, ''));
+    $('btnEnviar').textContent = t === 'Corrección de falla' ? 'Enviar reporte' : 'Enviar solicitud';
+  }
 
   function setErr(id, msg) {
     const el = id === 'equipo' ? ($('equipoSel').hidden ? $('equipoMan') : $('equipoSel')) : $(id);
     if (el) el.setAttribute('aria-invalid', msg ? 'true' : 'false');
     const e = $(id + 'Err'); if (e) e.textContent = msg || '';
+    if (!msg) $('formErr').hidden = true;
   }
   function limpiarErrores() { CAMPOS.forEach(c => setErr(c, '')); $('formErr').hidden = true; }
 
@@ -304,6 +340,10 @@
           '<span><b>' + esc(p[0]) + '</b>' + esc((p[1] || '').trim()) + '</span><em class="tag">' + u.horas + ' h</em></label>';
       }).join('');
       document.querySelectorAll('input[name="urgencia"]').forEach(r => r.onchange = () => setErr('urgencias', ''));
+      (c.tipos || []).forEach(t => $('tipo').add(new Option(t, t)));
+      $('perifericos').innerHTML = (c.perifericos || []).map(p =>
+        '<label class="choice"><input type="checkbox" name="periferico" value="' + esc(p) + '"><b>' + esc(p) + '</b></label>').join('');
+      document.querySelectorAll('input[name="periferico"]').forEach(r => r.onchange = () => setErr('perifericos', ''));
       api('calentarDatos').catch(() => {});   // precarga clientes y equipos en segundo plano
     } catch (e) { mostrarFormErr('No se pudo cargar el formulario: ' + e.message); }
 
@@ -324,7 +364,8 @@
     $('cliente').addEventListener('keydown', teclasSug);
     $('cliente').addEventListener('blur', () => setTimeout(cerrarSug, 120));
 
-    ['contacto', 'telefono', 'correo', 'estado', 'descripcion', 'equipoMan'].forEach(id =>
+    $('tipo').addEventListener('change', () => { setErr('tipo', ''); mostrarBloque(); });
+    ['contacto', 'telefono', 'correo', 'estado', 'descripcion', 'equipoMan', 'licencia'].forEach(id =>
       $(id).addEventListener('input', () => setErr(id === 'equipoMan' ? 'equipo' : id, '')));
     $('descripcion').addEventListener('input', () => $('descCount').textContent = $('descripcion').value.length + '/1500');
     $('descripcion').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('frm').requestSubmit(); });
@@ -344,7 +385,8 @@
     $('frm').onsubmit = enviar;
     $('btnOtro').onclick = () => {
       $('descripcion').value = ''; $('descCount').textContent = '0/1500';
-      document.querySelectorAll('input[name="urgencia"]').forEach(r => r.checked = false);
+      document.querySelectorAll('input[name="urgencia"], input[name="periferico"]').forEach(r => r.checked = false);
+      $('tipo').value = ''; $('licencia').value = ''; mostrarBloque();
       pintarEquipos(); limpiarErrores();
       $('doneBox').hidden = true; $('formBox').hidden = false;
       (EQ.length ? $('equipoSel') : $('equipoMan')).focus();
@@ -363,14 +405,20 @@
     if (!$('equipoSel').hidden && $('equipoSel').value === '') e.equipo = 'Elige el equipo con la falla.';
     else if (!d.equipo.trim()) e.equipo = 'Escribe el equipo y modelo.';
     if (!d.estado) e.estado = 'Selecciona el estado.';
-    if (!d.urgencia) e.urgencias = 'Elige qué tan urgente es.';
-    if (d.descripcion.trim().length < 10) e.descripcion = 'Describe la falla con un poco más de detalle.';
+    if (!d.tipo) e.tipo = 'Elige el tipo de solicitud.';
+    if (d.tipo === 'Corrección de falla') {
+      if (!d.urgencia) e.urgencias = 'Elige qué tan urgente es.';
+      if (d.descripcion.trim().length < 10) e.descripcion = 'Describe la falla con un poco más de detalle.';
+    }
+    if (d.tipo === 'Instalación de periférico' && !d.perifericos.length) e.perifericos = 'Marca al menos un periférico.';
+    if (d.tipo === 'Licencias' && !d.licencia.trim()) e.licencia = 'Escribe el nombre de la licencia.';
     return e;
   }
 
   function enfocar(id) {
     const el = id === 'equipo' ? ($('equipoSel').hidden ? $('equipoMan') : $('equipoSel'))
-      : id === 'urgencias' ? document.querySelector('input[name="urgencia"]') : $(id);
+      : id === 'urgencias' ? document.querySelector('input[name="urgencia"]')
+      : id === 'perifericos' ? document.querySelector('input[name="periferico"]') : $(id);
     if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   }
 
@@ -380,7 +428,14 @@
     const d = { refCliente: SEL.ref, web: $('web').value };
     ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'serial', 'descripcion'].forEach(k => d[k] = $(k).value);
     d.equipo = equipoElegido();
+    d.tipo = $('tipo').value;
     const u = document.querySelector('input[name="urgencia"]:checked'); d.urgencia = u ? u.value : '';
+    d.perifericos = Array.from(document.querySelectorAll('input[name="periferico"]:checked')).map(x => x.value);
+    d.licencia = $('licencia').value;
+    // Solo se envían los datos del tipo elegido
+    if (d.tipo !== 'Corrección de falla') { d.urgencia = ''; d.descripcion = ''; }
+    if (d.tipo !== 'Instalación de periférico') d.perifericos = [];
+    if (d.tipo !== 'Licencias') d.licencia = '';
 
     const errs = validar(d), ids = CAMPOS.filter(c => errs[c]);
     if (ids.length) {
@@ -456,7 +511,7 @@
       if (r.estado) $('estado').value = r.estado;
       EQ = r.equipos || [];
       pintarEquipos();
-      $('cliHint').textContent = EQ.length ? '✓ Datos cargados. Elige abajo el equipo con la falla.' : '✓ Datos cargados. No encontramos equipos a tu nombre: escríbelo.';
+      $('cliHint').textContent = EQ.length ? '✓ Datos cargados. Elige abajo el equipo.' : '✓ Datos cargados. No encontramos equipos a tu nombre: escríbelo.';
     } catch (e) {
       SEL.ref = '';
       $('cliHint').textContent = 'No se pudieron cargar tus datos; complétalos manualmente.';
@@ -508,7 +563,7 @@
     const nivel = { 'Sin asignar': 0, 'Asignado': 1, 'En reparación': 2, 'Esperando repuesto': 2, 'Resuelto': 3, 'Cerrado': 3 }[r.estatus] || 0;
     const pasos = [['Reportado', r.fecha.split(' ')[0]], ['Asignado', r.tecnico ? 'Técnico: ' + r.tecnico : ''],
       [r.estatus === 'Esperando repuesto' ? 'Esperando repuesto' : 'En atención', r.atencion], ['Resuelto', r.cierre]];
-    const filas = [['Equipo', r.equipo + (r.serial ? ' · S/N ' + r.serial : '')], ['Ubicación', r.estado + ' (Región ' + r.region + ')'],
+    const filas = [['Solicitud', r.solicitud], ['Detalle', r.detalle], ['Equipo', r.equipo + (r.serial ? ' · S/N ' + r.serial : '')], ['Ubicación', r.estado + ' (Región ' + r.region + ')'],
       ['Urgencia', r.prioridad], ['Visita en sitio', r.visita]].filter(f => f[1]);
     $('estRes').innerHTML =
       '<div class="row" style="justify-content:space-between"><h2 style="font-size:20px">Ticket ' + esc(r.id) + '</h2>' + badge(r.estatus) + '</div>' +
@@ -590,7 +645,7 @@
       (!RAPIDO || RAPIDOS[RAPIDO](x)) &&
       (!r || x.region === r) && (!e || x.estatus === e) &&
       (!t || (t === 'Sin asignar' ? !x.tecnico : x.tecnico === t)) && (!p || x.prioridad === p) &&
-      (!q || (x.id + ' ' + x.cliente + ' ' + x.equipo + ' ' + x.serial + ' ' + x.contacto).toLowerCase().indexOf(q) >= 0));
+      (!q || (x.id + ' ' + x.cliente + ' ' + x.equipo + ' ' + x.serial + ' ' + x.contacto + ' ' + x.solicitud).toLowerCase().indexOf(q) >= 0));
   }
 
   function render() {
@@ -615,7 +670,7 @@
     $('tbody').innerHTML = rows.length ? rows.map(t =>
       '<tr' + (t.sinResp ? ' class="alerta"' : '') + '><td><b>' + esc(t.id) + '</b><small>' + esc(t.fecha) + '</small></td>' +
       '<td>' + esc(t.cliente) + '<small>' + esc(t.contacto) + ' · ' + esc(t.telefono) + '</small></td>' +
-      '<td>' + esc(t.equipo) + (t.serial ? '<small>Serial ' + esc(t.serial) + '</small>' : '') + '</td>' +
+      '<td>' + esc(t.equipo) + (t.serial ? '<small>Serial ' + esc(t.serial) + '</small>' : '') + (t.solicitud ? '<small><b>' + esc(t.solicitud) + '</b></small>' : '') + '</td>' +
       '<td>' + esc(t.region) + '<small>' + esc(t.estado) + '</small></td>' +
       '<td>' + (t.tecnico ? esc(t.tecnico) : '<span class="venc">Sin técnico</span>') + '</td>' +
       '<td class="' + clsPri(t.prioridad) + '">' + esc(t.prioridad) + '</td>' +
@@ -641,12 +696,12 @@
     $('dTitulo').textContent = 'Ticket ' + a.id;
     $('dSub').innerHTML = badge(a.estatus) + '<span class="' + clsPri(a.prioridad) + '">' + esc(a.prioridad) + '</span>' +
       (a.vencido ? '<span class="venc">SLA vencido</span>' : '') + '<span class="meta" style="color:var(--muted);font-size:13px">' + esc(a.fecha) + '</span>';
-    const filas = [['Cliente', a.cliente], ['Contacto', a.contacto], ['Teléfono', a.telefono], ['Correo', a.correo],
+    const filas = [['Solicitud', a.solicitud], ['Periféricos', a.perifericos], ['Licencia', a.licencia], ['Cliente', a.cliente], ['Contacto', a.contacto], ['Teléfono', a.telefono], ['Correo', a.correo],
       ['Equipo', a.equipo + (a.serial ? ' · S/N ' + a.serial : '')], ['Ubicación', a.estado + ' · Región ' + a.region],
       ['Límite SLA', a.limite], ['Atención', a.atencion], ['Visita', a.visita], ['Garantía', a.garantia], ['En sitio', a.sitio],
       ['Último aviso', a.alerta]].filter(f => f[1]);
     $('dInfo').innerHTML = '<div class="det"><dl>' + filas.map(f => '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>').join('') + '</dl></div>' +
-      '<div class="label">Falla reportada</div><div class="det pre">' + esc(a.descripcion) + '</div>' +
+      (a.descripcion ? '<div class="label">Descripción</div><div class="det pre">' + esc(a.descripcion) + '</div>' : '') +
       (a.obs ? '<div class="label">Observaciones</div><div class="det pre">' + esc(a.obs) + '</div>' : '');
     $('dEstatus').innerHTML = DATA.estatus.map(s => '<option>' + esc(s) + '</option>').join('');
     $('dEstatus').value = a.estatus;

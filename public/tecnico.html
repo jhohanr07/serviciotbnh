@@ -138,15 +138,16 @@
     let tel = String(t.telefono).replace(/[^\d+]/g, '');
     if (/^[24]\d{9}$/.test(tel)) tel = '0' + tel;
     const w = wa(t.telefono);
-    const filas = [['Cliente', t.cliente], ['Contacto', t.contacto], ['Equipo', t.equipo + (t.serial ? ' · S/N ' + t.serial : '')],
-      ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', t.urgencia], ['Reportado', t.fecha], ['Límite', t.limite]].filter(f => f[1]);
+    const falla = !t.solicitud || t.solicitud === 'Corrección de falla';
+    const filas = [['Solicitud', t.solicitud], ['Periféricos', t.perifericos], ['Licencia', t.licencia], ['Cliente', t.cliente], ['Contacto', t.contacto], ['Equipo', t.equipo + (t.serial ? ' · S/N ' + t.serial : '')],
+      ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', falla ? t.urgencia : ''], ['Reportado', t.fecha], ['Límite', t.limite]].filter(f => f[1]);
     $('info').innerHTML =
       '<div class="contact">' +
       (tel ? '<a class="btn ghost" href="tel:' + esc(tel) + '">Llamar</a>' : '') +
       (w ? '<a class="btn ghost" href="https://wa.me/' + w + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
       (t.correo ? '<a class="btn ghost" href="mailto:' + esc(t.correo) + '?subject=' + encodeURIComponent('Ticket ' + t.id) + '">Correo</a>' : '') + '</div>' +
       '<div class="det"><dl>' + filas.map(f => '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>').join('') + '</dl></div>' +
-      '<div class="label">Falla reportada</div><div class="det pre">' + esc(t.descripcion) + '</div>';
+      '<div class="label">' + (falla ? 'Falla reportada' : 'Solicitud') + '</div><div class="det pre">' + esc(t.descripcion) + '</div>';
     $('info').hidden = false; $('cargando').hidden = true;
   }
 
