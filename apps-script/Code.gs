@@ -101,9 +101,10 @@ function urlApp_() {
 }
 
 // enlace_('tecnico', {id:'TK-0001', t:'…'}) -> https://dominio.vercel.app/tecnico?id=TK-0001&t=…
+// Si falta URL_APP devuelve '' (el correo sale igual, pero sin botón) en vez de cancelar el envío
 function enlace_(ruta, params) {
   const base = urlApp_();
-  if (!base) throw new Error('Falta URL_APP (dominio de Vercel) en las propiedades del script.');
+  if (!base) { console.warn('Falta URL_APP en las propiedades del script: los correos salen sin enlace.'); return ''; }
   const q = Object.keys(params || {}).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
   return base + '/' + (ruta || '') + (q ? '?' + q : '');
 }
@@ -128,6 +129,32 @@ function doGet(e) {
     '<script>try{window.top.location.replace(' + JSON.stringify(destino) + ')}catch(e){}</script></body></html>')
     .setTitle('Servicio técnico · ' + EMPRESA)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Menú: revisa la configuración y envía un correo de prueba a quien lo ejecuta
+function diagnostico() {
+  const ui = SpreadsheetApp.getUi(), L = [];
+  const chk = function (ok, txt) { L.push((ok ? '✅ ' : '❌ ') + txt); };
+  const url = urlApp_();
+  chk(!!url && !/script\.google\.com/.test(url), 'URL_APP: ' + (url || 'vacía (los correos salen sin botón)'));
+  chk(!!propiedad_('API_TOKEN'), 'API_TOKEN ' + (propiedad_('API_TOKEN') ? 'configurado' : 'falta'));
+  chk(!!propiedad_('CLAVE_PANEL'), 'CLAVE_PANEL ' + (propiedad_('CLAVE_PANEL') ? 'configurada' : 'falta'));
+  let cuota = -1;
+  try { cuota = MailApp.getRemainingDailyQuota(); } catch (e) { L.push('❌ No se pudo leer la cuota de correo: ' + e.message); }
+  if (cuota >= 0) chk(cuota > 5, 'Correos que aún puedes enviar hoy: ' + cuota);
+  const sinCorreo = leer_('TECNICOS').filter(function (t) { return esActivo_(t) && !String(t['Correo'] || '').trim(); })
+    .map(function (t) { return t['Nombre']; });
+  chk(!sinCorreo.length, sinCorreo.length ? 'Técnicos activos sin correo: ' + sinCorreo.join(', ') : 'Todos los técnicos activos tienen correo');
+  chk(alertasActivas_(), 'Alertas automáticas ' + (alertasActivas_() ? 'activas' : 'desactivadas'));
+  const yo = Session.getEffectiveUser().getEmail();
+  try {
+    MailApp.sendEmail({ to: yo, subject: '[' + EMPRESA + '] Prueba de correo del sistema de tickets',
+      htmlBody: correoHtml_({ titulo: 'Prueba de correo', subtitulo: 'Si recibes esto, el envío de correos funciona.',
+        boton: { texto: 'Abrir formulario', url: enlace_('') } }),
+      body: 'Si recibes esto, el envío de correos funciona.' });
+    chk(true, 'Correo de prueba enviado a ' + yo);
+  } catch (e) { chk(false, 'No se pudo enviar el correo de prueba: ' + e.message); }
+  ui.alert('Diagnóstico del sistema', L.join('\n'), ui.ButtonSet.OK);
 }
 
 // Menú: crea (o muestra) el token compartido con Vercel
@@ -159,6 +186,7 @@ function onOpen() {
     .addItem('Desactivar alertas automáticas', 'desactivarAlertas')
     .addSeparator()
     .addItem('Generar token para Vercel', 'generarTokenApi')
+    .addItem('Diagnóstico (configuración y correo de prueba)', 'diagnostico')
     .addItem('Ver enlaces de la aplicación', 'mostrarEnlaces')
     .addToUi();
 }
