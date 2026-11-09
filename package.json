@@ -1,0 +1,13 @@
+{
+  "name": "servicio-tecnico2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Sistema de tickets de servicio técnico de BNH Medical: páginas en Vercel y backend en Google Apps Script (sin claves JSON).",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

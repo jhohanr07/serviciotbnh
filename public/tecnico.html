@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ficha del técnico · BNH Medical</title>
+<meta name="description" content="Ficha de ticket para técnicos de BNH Medical.">
+<meta name="theme-color" content="#00668a">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/estilos.css">
+<style>
+  main { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+  .head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .contact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
+  .contact .btn { min-height: 48px; }
+  @media (max-width: 340px) { .contact { grid-template-columns: minmax(0, 1fr); } }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: rgba(255,255,255,.96); backdrop-filter: blur(6px);
+    border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .savebar-in { max-width: 720px; margin: 0 auto; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+  .dirty { font-size: 13px; color: var(--muted); }
+  .dirty.on { color: var(--warn); font-weight: 600; }
+  .ro input, .ro select, .ro textarea { background: var(--track); }
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="appbar-in">
+    <span class="brand"><span class="brand-mark" aria-hidden="true">+</span><span><small>Ficha del técnico</small><b>BNH Medical</b></span></span>
+  </div>
+</header>
+
+<main id="main" class="narrow">
+  <div class="card" id="cab">
+    <div class="head">
+      <div><div class="eyebrow" id="eyebrow">Cargando…</div><h1 id="titulo" style="font-size:22px">Ticket</h1></div>
+      <div id="estBadge"></div>
+    </div>
+    <div id="msgErr" class="msg err" hidden role="alert"></div>
+    <div id="cargando"><div class="skeleton" style="height:18px;margin-top:16px;width:70%"></div><div class="skeleton" style="height:90px;margin-top:12px"></div></div>
+    <div id="info" hidden></div>
+  </div>
+
+  <form id="frm" class="card" hidden novalidate>
+    <div id="roMsg" class="msg info" hidden style="margin-top:0;margin-bottom:8px">Coordinación cerró este ticket. Solo puedes consultarlo.</div>
+    <fieldset>
+      <legend><span class="num" aria-hidden="true">1</span>Atención</legend>
+      <div class="grid2">
+        <div class="field">
+          <label for="fechaAtencion">Fecha de atención</label>
+          <input id="fechaAtencion" type="date" aria-describedby="fechaAtencionHint fechaAtencionErr">
+          <div class="hint" id="fechaAtencionHint">Día en que respondiste o contactaste al cliente.</div><div class="ferr" id="fechaAtencionErr"></div>
+        </div>
+        <div class="field">
+          <label for="estatus">Situación del caso</label>
+          <select id="estatus" aria-describedby="estatusHint estatusErr"></select>
+          <div class="hint" id="estatusHint">Disponible al registrar la atención.</div><div class="ferr" id="estatusErr"></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend><span class="num" aria-hidden="true">2</span>Diagnóstico</legend>
+      <div class="field">
+        <label for="obs">Observaciones</label>
+        <textarea id="obs" maxlength="4000" placeholder="Qué le pasa al equipo, qué se hizo y cuál fue la solución…" aria-describedby="obsErr"></textarea>
+        <div class="ferr" id="obsErr"></div>
+      </div>
+      <div class="field">
+        <label for="sitio">Atención en sitio <span class="opt-txt">(si hay que ir)</span></label>
+        <textarea id="sitio" maxlength="1500" style="min-height:76px" placeholder="Ej.: Hay que cambiar el transductor en sitio…"></textarea>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="fechaVisita">Fecha de la visita</label>
+          <input id="fechaVisita" type="date" aria-describedby="fechaVisitaErr"><div class="ferr" id="fechaVisitaErr"></div>
+        </div>
+        <div class="field">
+          <label for="garantia">¿Entra por garantía?</label>
+          <select id="garantia" aria-describedby="garantiaErr"><option value="">Selecciona…</option><option>Sí</option><option>No</option></select>
+          <div class="ferr" id="garantiaErr"></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend><span class="num" aria-hidden="true">3</span>Cierre</legend>
+      <div class="field">
+        <label for="fechaCierre">Fecha de cierre</label>
+        <input id="fechaCierre" type="date" aria-describedby="fechaCierreHint fechaCierreErr">
+        <div class="hint" id="fechaCierreHint">Al llenarla el ticket pasa a «Resuelto» y avisamos al cliente. Requiere observaciones y garantía.</div>
+        <div class="ferr" id="fechaCierreErr"></div>
+      </div>
+    </fieldset>
+  </form>
+</main>
+
+<div class="savebar" id="savebar" hidden>
+  <div class="savebar-in">
+    <span class="dirty" id="dirty" aria-live="polite">Sin cambios</span>
+    <button class="btn" id="btnGuardar" type="button">Guardar</button>
+  </div>
+</div>
+
+<script src="/assets/comun.js"></script>
+<script>
+  const QS = new URLSearchParams(location.search);
+  const ID = /^TK-\d+$/.test(QS.get('id') || '') ? QS.get('id') : '';
+  const TK = /^[0-9a-f]{32}$/.test(QS.get('t') || '') ? QS.get('t') : '';
+  if (ID) document.title = 'Ticket ' + ID + ' · BNH Medical';
+  const CAMPOS = ['fechaAtencion', 'estatus', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'];
+  let T = null, ORIGINAL = '', SUCIO = false;
+
+  function err(m) { $('msgErr').textContent = m; $('msgErr').hidden = false; }
+  function setErr(id, msg) {
+    if ($(id)) $(id).setAttribute('aria-invalid', msg ? 'true' : 'false');
+    if ($(id + 'Err')) $(id + 'Err').textContent = msg || '';
+  }
+  const valores = () => { const d = {}; CAMPOS.forEach(k => d[k] = $(k).value); return d; };
+
+  // 04141234567 -> 584141234567 para WhatsApp
+  function wa(tel) {
+    let d = String(tel || '').replace(/\D/g, '');
+    if (/^0\d{10}$/.test(d)) d = '58' + d.slice(1);
+    else if (/^[24]\d{9}$/.test(d)) d = '58' + d;   // teléfonos guardados sin el 0
+    return /^58\d{10}$/.test(d) ? d : '';
+  }
+
+  function pintarInfo(t) {
+    $('eyebrow').textContent = 'Prioridad ' + t.prioridad + (t.vencido ? ' · SLA vencido' : '');
+    $('eyebrow').style.color = t.vencido || t.prioridad === 'P1' ? 'var(--bad)' : '';
+    $('titulo').textContent = 'Ticket ' + t.id;
+    $('estBadge').innerHTML = badge(t.estatus);
+    let tel = String(t.telefono).replace(/[^\d+]/g, '');
+    if (/^[24]\d{9}$/.test(tel)) tel = '0' + tel;
+    const w = wa(t.telefono);
+    const filas = [['Cliente', t.cliente], ['Contacto', t.contacto], ['Equipo', t.equipo + (t.serial ? ' · S/N ' + t.serial : '')],
+      ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', t.urgencia], ['Reportado', t.fecha], ['Límite', t.limite]].filter(f => f[1]);
+    $('info').innerHTML =
+      '<div class="contact">' +
+      (tel ? '<a class="btn ghost" href="tel:' + esc(tel) + '">Llamar</a>' : '') +
+      (w ? '<a class="btn ghost" href="https://wa.me/' + w + '" target="_blank" rel="noopener">WhatsApp</a>' : '') +
+      (t.correo ? '<a class="btn ghost" href="mailto:' + esc(t.correo) + '?subject=' + encodeURIComponent('Ticket ' + t.id) + '">Correo</a>' : '') + '</div>' +
+      '<div class="det"><dl>' + filas.map(f => '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>').join('') + '</dl></div>' +
+      '<div class="label">Falla reportada</div><div class="det pre">' + esc(t.descripcion) + '</div>';
+    $('info').hidden = false; $('cargando').hidden = true;
+  }
+
+  // Habilita la situación del caso solo con atención registrada y sin cierre
+  function reglas() {
+    const at = $('fechaAtencion').value, ci = $('fechaCierre').value;
+    $('estatus').disabled = !T.editable || !at || !!ci;
+    $('estatusHint').textContent = ci ? 'Con fecha de cierre el caso queda «Resuelto».' : at ? 'Indica si estás reparando o esperando un repuesto.' : 'Disponible al registrar la atención.';
+    $('fechaCierre').min = at || T.fechaReporte;
+  }
+
+  function marcarSucio() {
+    SUCIO = JSON.stringify(valores()) !== ORIGINAL;
+    $('dirty').textContent = SUCIO ? 'Cambios sin guardar' : 'Sin cambios';
+    $('dirty').classList.toggle('on', SUCIO);
+  }
+
+  (async function () {
+    if (!ID || !TK) { $('titulo').textContent = 'Enlace no válido'; $('cargando').hidden = true; $('eyebrow').textContent = ''; return err('Abre el ticket desde el botón del correo.'); }
+    try {
+      const t = await api('getTicketTecnico', ID, TK);
+      if (!t.ok) throw new Error(t.error);
+      T = t; pintarInfo(t);
+      $('estatus').innerHTML = t.estatusTecnico.map(s => '<option>' + esc(s) + '</option>').join('');
+      $('estatus').value = t.estatusTecnico.indexOf(t.estatus) >= 0 ? t.estatus : t.estatusTecnico[0];
+      ['fechaAtencion', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'].forEach(k => $(k).value = t[k] || '');
+      ['fechaAtencion', 'fechaCierre'].forEach(k => { $(k).max = t.hoy; $(k).min = t.fechaReporte; });
+      $('fechaVisita').min = t.fechaReporte;
+      if (!t.editable) {
+        $('frm').classList.add('ro'); $('roMsg').hidden = false;
+        CAMPOS.forEach(k => $(k).disabled = true);
+      } else {
+        $('savebar').hidden = false;
+        CAMPOS.forEach(k => $(k).addEventListener('input', () => { setErr(k, ''); reglas(); marcarSucio(); }));
+        $('frm').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) guardar(); });
+      }
+      $('frm').hidden = false;
+      reglas();
+      ORIGINAL = JSON.stringify(valores());
+    } catch (e) { $('titulo').textContent = 'No se pudo abrir el ticket'; $('eyebrow').textContent = ''; $('cargando').hidden = true; err(e.message); }
+  })();
+
+  function validar(d) {
+    const e = {};
+    if (d.fechaAtencion && d.fechaAtencion > T.hoy) e.fechaAtencion = 'No puede ser una fecha futura.';
+    if (d.fechaCierre) {
+      if (d.fechaCierre > T.hoy) e.fechaCierre = 'No puede ser una fecha futura.';
+      if (!d.fechaAtencion) e.fechaAtencion = 'Para cerrar, registra la fecha de atención.';
+      else if (d.fechaCierre < d.fechaAtencion) e.fechaCierre = 'No puede ser anterior a la atención.';
+      if (!d.obs.trim()) e.obs = 'Para cerrar, relata el problema y la solución.';
+      if (!d.garantia) e.garantia = 'Para cerrar, indica si entra por garantía.';
+    }
+    return e;
+  }
+
+  async function guardar() {
+    if (!T || !T.editable) return;
+    $('msgErr').hidden = true;
+    CAMPOS.forEach(k => setErr(k, ''));
+    const d = valores();
+    const e = validar(d), ids = CAMPOS.filter(k => e[k]);
+    if (ids.length) { ids.forEach(k => setErr(k, e[k])); $(ids[0]).focus(); return aviso('Revisa los campos marcados.', 'err'); }
+    if (!d.fechaAtencion || d.fechaCierre) d.estatus = '';
+    ocupado($('btnGuardar'), true, 'Guardando…');
+    try {
+      const r = await api('guardarTicketTecnico', ID, TK, d);
+      if (!r.ok) { if (r.campo) { setErr(r.campo, r.error); $(r.campo).focus(); } throw new Error(r.error); }
+      T.estatus = r.estatus; $('estBadge').innerHTML = badge(r.estatus);
+      ORIGINAL = JSON.stringify(valores()); marcarSucio();
+      aviso(r.avisoCliente ? 'Ticket resuelto. Avisamos al cliente por correo.' : 'Cambios guardados.');
+    } catch (ex) { aviso(ex.message, 'err'); }
+    ocupado($('btnGuardar'), false);
+  }
+
+  $('btnGuardar').onclick = guardar;
+  window.addEventListener('beforeunload', e => { if (SUCIO) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+</body>
+</html>

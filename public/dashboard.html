@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard de servicio técnico · BNH Medical</title>
+<meta name="description" content="Indicadores de servicio técnico BNH Medical.">
+<meta name="theme-color" content="#00668a">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/estilos.css">
+<style>
+  .filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; gap: 10px; align-items: end; margin-bottom: 16px; }
+  @media (max-width: 900px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .filters label { font-size: 12.5px; color: var(--muted); }
+  .filters input, .filters select { min-height: 40px; padding: 8px 10px; font-size: 14px; }
+  @media (max-width: 640px) { .filters input, .filters select { font-size: 16px; } }
+
+  .alert { border: 1px solid #f0c4c0; border-left: 5px solid var(--bad); background: var(--bad-bg); border-radius: var(--r); padding: 14px 16px; margin-bottom: 16px; }
+  .alert-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .alert-title { display: flex; gap: 10px; align-items: center; color: var(--bad); font-weight: 700; }
+  .alert ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13.5px; }
+  .alert li b { color: var(--bad); }
+  .alert .estado-alertas { font-size: 12.5px; color: var(--ink); margin-top: 8px; }
+
+  .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+  .card h3 { font-size: 15px; margin-bottom: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); margin: -4px 0 12px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  .hrows { display: grid; gap: 6px; }
+  .hrow { display: grid; grid-template-columns: minmax(80px, 160px) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 5px 6px; border-radius: var(--r-sm);
+    width: 100%; background: none; border: 0; font: inherit; color: inherit; text-align: left; }
+  button.hrow { cursor: pointer; }
+  button.hrow:hover, .hrow.sel { background: var(--mint); }
+  .hrow .lbl { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .val { font-size: 12.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  @media (max-width: 520px) { .hrow { grid-template-columns: minmax(0, 1fr) auto; } .hrow .track { grid-column: 1 / -1; grid-row: 2; } }
+  .track { display: flex; gap: 2px; height: 16px; }
+  .seg { display: block; height: 100%; min-width: 3px; }
+  .seg:last-child { border-radius: 0 4px 4px 0; }
+
+  .vbars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 14px; align-items: end; height: 190px; border-bottom: 1px solid var(--grid); padding: 0 6px; }
+  .vcol { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+  .vcol .v { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .vcol .b { width: 70%; max-width: 64px; border-radius: 4px 4px 0 0; min-height: 2px; }
+  .vlabels { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 14px; padding: 6px 6px 0; }
+  .vlabels span { text-align: center; font-size: 12px; color: var(--muted); }
+
+  .meter { margin-bottom: 16px; }
+  .meter .top { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; margin-bottom: 6px; }
+  .meter .top b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .meter .trk { height: 14px; background: var(--track); border-radius: 4px; overflow: hidden; }
+  .meter .fill { height: 100%; background: var(--c-pend); border-radius: 0 4px 4px 0; }
+
+  .block { margin-bottom: 16px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button { font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+    font-weight: 500; padding: 7px 12px; font-size: 13.5px; cursor: pointer; min-height: 36px; }
+  .tabs button:hover { border-color: var(--brand); }
+  .tabs button[aria-selected="true"] { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 600; }
+  .tabs .n { display: inline-block; margin-left: 6px; font-size: 12px; opacity: .8; font-variant-numeric: tabular-nums; }
+  .hint { margin-top: 10px; }
+
+  #tip { position: fixed; z-index: 40; pointer-events: none; background: var(--ink); color: #fff; font-size: 12.5px; padding: 6px 9px; border-radius: var(--r-sm);
+    max-width: 260px; box-shadow: var(--sh-2); white-space: pre-line; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Saltar al contenido</a>
+<header class="appbar">
+  <div class="appbar-in">
+    <a class="brand" id="lnkHome"><span class="brand-mark" aria-hidden="true">+</span><span><small>Servicio técnico</small><b>BNH Medical</b></span></a>
+    <nav class="nav" aria-label="Secciones"><a id="lnkPanel">Casos</a><a aria-current="page" id="lnkDash">Dashboard</a><button type="button" id="btnSalir" hidden>Salir</button></nav>
+  </div>
+</header>
+
+<main id="main">
+  <form class="card login" id="loginBox" novalidate>
+    <div class="eyebrow">Coordinación</div>
+    <h1 style="font-size:20px">Acceso al dashboard</h1>
+    <div class="field"><label for="clave">Clave del panel</label><input id="clave" type="password" autocomplete="current-password"></div>
+    <div id="loginErr" class="msg err" hidden role="alert"></div>
+    <button class="btn block" id="btnLogin" type="submit" style="margin-top:18px">Entrar</button>
+  </form>
+
+  <div id="dash" hidden>
+    <div class="bar">
+      <div><div class="eyebrow">Indicadores</div><h1 style="font-size:22px">Resumen de casos</h1></div>
+      <div class="row"><span class="meta" id="actualizado" aria-live="polite"></span>
+        <button class="btn ghost sm" id="btnCsv" type="button">Exportar CSV</button>
+        <button class="btn ghost sm" id="btnRef" type="button">Actualizar</button></div>
+    </div>
+
+    <div class="filters">
+      <div><label for="fDesde">Reportados desde</label><input id="fDesde" type="date"></div>
+      <div><label for="fHasta">Hasta</label><input id="fHasta" type="date"></div>
+      <div><label for="fReg">Región</label><select id="fReg"></select></div>
+      <div><label for="fTec">Técnico</label><select id="fTec"></select></div>
+      <div><label for="fPri">Prioridad</label><select id="fPri"></select></div>
+      <div><button class="btn ghost sm" id="btnLimpiar" type="button" style="min-height:40px">Quitar filtros</button></div>
+    </div>
+    <div id="cargaErr" class="msg err" hidden role="alert" style="margin:0 0 16px"></div>
+
+    <section class="alert" id="alertBox" hidden aria-live="polite">
+      <div class="alert-top">
+        <div class="alert-title"><span class="ico" aria-hidden="true">!</span><span id="alertTxt"></span></div>
+        <button class="btn danger sm" id="btnAlertas" type="button">Enviar alertas ahora</button>
+      </div>
+      <ul id="alertList"></ul>
+      <div class="estado-alertas" id="alertEstado"></div>
+    </section>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="charts">
+      <section class="card">
+        <h3>Casos por técnico</h3>
+        <div class="legend"><span><i style="background:var(--c-pend)"></i>Pendientes</span><span><i style="background:var(--c-res)"></i>Resueltos</span></div>
+        <div class="hrows" id="chTec"></div>
+        <div class="hint">Haz clic en un técnico para filtrar todo el dashboard.</div>
+      </section>
+      <section class="card">
+        <h3>Antigüedad de los casos pendientes</h3>
+        <div class="legend"><span><i style="background:var(--c-pend)"></i>Dentro del plazo</span><span><i style="background:var(--bad)"></i><span id="lgAlerta"></span></span></div>
+        <div id="chEdad"></div>
+      </section>
+      <section class="card">
+        <h3>Tiempo promedio de respuesta por técnico</h3>
+        <div class="hrows" id="chResp"></div>
+        <div class="hint">Días entre el reporte y la fecha de atención que registra el técnico.</div>
+      </section>
+      <section class="card">
+        <h3>Garantía y visitas en sitio</h3>
+        <div id="chMix"></div>
+      </section>
+    </div>
+
+    <section class="card block">
+      <h3>Rendimiento por técnico</h3>
+      <div class="tbl-wrap"><table id="tTec"></table></div>
+    </section>
+
+    <section class="card block">
+      <h3>Detalle de casos</h3>
+      <div class="tabs" role="tablist" id="tabs" aria-label="Vistas de casos"></div>
+      <div class="tbl-wrap" role="tabpanel"><table id="tCasos"></table></div>
+    </section>
+  </div>
+</main>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<script src="/assets/comun.js"></script>
+<script>
+  const HORA = 36e5, DIA = 864e5;
+
+  /* ---------- Formatos ---------- */
+  const num1 = n => n.toLocaleString('es-VE', { maximumFractionDigits: 1, minimumFractionDigits: n < 10 && n % 1 ? 1 : 0 });
+  function fDur(ms) {
+    if (ms == null) return '—';
+    if (ms < DIA) return Math.max(1, Math.round(ms / HORA)) + ' h';
+    const d = ms / DIA;
+    return num1(d) + (d < 1.05 ? ' día' : ' días');
+  }
+  function fDias(d) {
+    if (d == null) return '—';
+    if (d === 0) return 'mismo día';
+    return num1(d) + (d === 1 ? ' día' : ' días');
+  }
+  const fFecha = ms => ms ? new Date(ms).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+  const fFechaHora = ms => ms ? new Date(ms).toLocaleString('es-VE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+  const prom = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+
+  /* ---------- Estado ---------- */
+  let CLAVE = '', D = null, T = [], TAB = 'abiertos', DIAS = 3;
+  const SORT = { tec: { k: 'pend', dir: -1 }, casos: { k: 'edad', dir: -1 } };
+
+  /* ---------- Acceso y carga ---------- */
+  async function entrar(clave, manual) {
+    $('loginErr').hidden = true;
+    if (manual) ocupado($('btnLogin'), true, 'Entrando…');
+    try {
+      const r = await api('panelLogin', clave);
+      if (!r.ok) throw new Error(r.error);
+      CLAVE = clave; Sesion.set(clave);
+      $('loginBox').hidden = true; $('dash').hidden = false; $('btnSalir').hidden = false;
+      await cargar();
+    } catch (e) {
+      Sesion.clear();
+      $('loginBox').hidden = false; $('dash').hidden = true;
+      if (manual) { $('loginErr').textContent = e.message; $('loginErr').hidden = false; $('clave').select(); }
+    }
+    if (manual) ocupado($('btnLogin'), false);
+  }
+
+  async function cargar(manual) {
+    if (manual) ocupado($('btnRef'), true);
+    try {
+      const r = await api('getDashboardData', CLAVE);
+      if (!r.ok) throw new Error(r.error);
+      D = r; DIAS = r.horasAlerta / 24; T = preparar(r);
+      $('lgAlerta').textContent = DIAS + ' días o más (generan alerta si no tienen respuesta)';
+      llenarFiltros(); render();
+      $('cargaErr').hidden = true;
+      $('actualizado').textContent = 'Actualizado ' + horaCorta();
+    } catch (e) { $('cargaErr').textContent = 'No se pudieron cargar los datos: ' + e.message; $('cargaErr').hidden = false; }
+    if (manual) ocupado($('btnRef'), false);
+  }
+
+  // Métricas por ticket
+  function preparar(r) {
+    const ahora = r.ahora, limite = r.horasAlerta * HORA;
+    return r.tickets.map(t => {
+      const abierto = r.abiertos.indexOf(t.estatus) >= 0;
+      const sinAtender = r.sinRespuesta.indexOf(t.estatus) >= 0 && !t.atencion;
+      return Object.assign({}, t, {
+        tec: t.tecnico || 'Sin asignar',
+        abierto: abierto,
+        edad: abierto && t.fecha ? ahora - t.fecha : null,
+        dur: !abierto && t.fecha && t.cierre ? Math.max(0, t.cierre - t.fecha) : null,
+        gar: /^s[ií]/i.test(t.garantia),
+        enSitio: !!t.visita || (!!t.sitio && !/^\s*no\b/i.test(t.sitio)),
+        sinResp: abierto && sinAtender && !!t.fecha && ahora - t.fecha >= limite,
+        vencido: abierto && !!t.limite && t.limite < ahora
+      });
+    });
+  }
+
+  /* ---------- Filtros ---------- */
+  function llenarFiltros() {
+    const poner = (id, titulo, vals) => {
+      const sel = $(id), prev = sel.value;
+      sel.innerHTML = '<option value="">' + titulo + '</option>' + vals.map(v => '<option>' + esc(v) + '</option>').join('');
+      sel.value = vals.indexOf(prev) >= 0 ? prev : '';
+    };
+    const tecs = D.tecnicos.map(t => t.nombre);
+    T.forEach(t => { if (t.tecnico && tecs.indexOf(t.tecnico) < 0) tecs.push(t.tecnico); });
+    poner('fReg', 'Todas', D.regiones);
+    poner('fTec', 'Todos', tecs.concat(['Sin asignar']));
+    poner('fPri', 'Todas', ['P1', 'P2', 'P3', 'P4']);
+  }
+
+  function filtrados() {
+    const de = $('fDesde').value ? new Date($('fDesde').value + 'T00:00:00').getTime() : null;
+    const ha = $('fHasta').value ? new Date($('fHasta').value + 'T23:59:59').getTime() : null;
+    const reg = $('fReg').value, tec = $('fTec').value, pri = $('fPri').value;
+    return T.filter(t => (!de || (t.fecha && t.fecha >= de)) && (!ha || (t.fecha && t.fecha <= ha)) &&
+      (!reg || t.region === reg) && (!tec || t.tec === tec) && (!pri || t.prioridad === pri));
+  }
+
+  /* ---------- Render ---------- */
+  function render() {
+    if (!D) return;
+    const rows = filtrados();
+    renderAlertas(rows);
+    renderKpis(rows);
+    const g = porTecnico(rows);
+    renderTec(g); renderEdad(rows); renderResp(g); renderMix(rows);
+    renderTablaTec(g); renderTabs(rows); renderCasos(rows);
+  }
+
+  function porTecnico(rows) {
+    const m = {};
+    rows.forEach(t => {
+      const k = t.tec;
+      const x = m[k] || (m[k] = { tec: k, region: '', pend: 0, res: 0, sinResp: 0, venc: 0, resp: [], dur: [], edad: [], gar: 0, sitio: 0, total: 0 });
+      x.total++;
+      if (t.abierto) { x.pend++; if (t.edad != null) x.edad.push(t.edad); } else x.res++;
+      if (t.sinResp) x.sinResp++;
+      if (t.vencido) x.venc++;
+      if (t.respDias != null) x.resp.push(t.respDias);
+      if (t.dur != null) x.dur.push(t.dur);
+      if (t.gar) x.gar++;
+      if (t.enSitio) x.sitio++;
+    });
+    D.tecnicos.forEach(tc => { if (m[tc.nombre]) m[tc.nombre].region = tc.region; });
+    return Object.keys(m).map(k => {
+      const x = m[k];
+      x.respProm = prom(x.resp); x.durProm = prom(x.dur); x.edadProm = prom(x.edad);
+      return x;
+    });
+  }
+
+  function renderAlertas(rows) {
+    const casos = rows.filter(t => t.sinResp).sort((a, b) => b.edad - a.edad);
+    $('alertBox').hidden = !casos.length;
+    if (!casos.length) return;
+    $('alertTxt').textContent = casos.length === 1 ? '1 caso lleva más de ' + DIAS + ' días sin respuesta'
+      : casos.length + ' casos llevan más de ' + DIAS + ' días sin respuesta';
+    $('alertList').innerHTML = casos.slice(0, 8).map(t =>
+      '<li><b>' + esc(t.id) + '</b> · ' + esc(t.cliente) + ' · ' + esc(t.equipo) + ' · ' + esc(t.tec) +
+      ' · <b>' + fDur(t.edad) + '</b>' + (t.alerta ? ' · último aviso ' + fFechaHora(t.alerta) : ' · sin aviso enviado') + '</li>').join('') +
+      (casos.length > 8 ? '<li>…y ' + (casos.length - 8) + ' más en la pestaña «Sin respuesta».</li>' : '');
+    $('alertEstado').textContent = D.alertasActivas
+      ? 'Alertas automáticas activas: el sistema revisa cada ' + D.minutosRevision + ' minutos y avisa al técnico por correo (se repite cada ' + D.horasRepetir + ' h si sigue sin respuesta).'
+      : 'Las alertas automáticas no están activadas. Actívalas en la hoja: menú Servicio técnico > Activar alertas automáticas.';
+  }
+
+  async function enviarAlertas() {
+    ocupado($('btnAlertas'), true, 'Enviando…');
+    try {
+      const r = await api('enviarAlertasAhora', CLAVE);
+      if (!r.ok) throw new Error(r.error);
+      if (r.ocupado) aviso('Otra revisión de alertas está en curso. Intenta en un minuto.', 'err');
+      else aviso(r.enviadas
+        ? 'Se enviaron ' + r.enviadas + ' correo(s) de alerta.' + (r.omitidas ? ' ' + r.omitidas + ' ya tenían aviso reciente.' : '')
+        : 'No se envió ningún correo: ' + (r.omitidas ? r.omitidas + ' caso(s) ya tenían aviso en las últimas ' + D.horasRepetir + ' h.' : 'no hay casos pendientes de aviso.') +
+          (r.sinCorreo ? ' ' + r.sinCorreo + ' sin correo de técnico ni CORREO_ADMIN.' : ''));
+      await cargar();
+    } catch (e) { aviso(e.message, 'err'); }
+    ocupado($('btnAlertas'), false);
+  }
+
+  function renderKpis(rows) {
+    const ab = rows.filter(t => t.abierto), res = rows.filter(t => !t.abierto);
+    const resp = rows.map(t => t.respDias).filter(x => x != null);
+    const dur = res.map(t => t.dur).filter(x => x != null);
+    const edad = ab.map(t => t.edad).filter(x => x != null);
+    const sin = rows.filter(t => t.sinResp).length;
+    const gar = rows.filter(t => t.gar).length, sitio = rows.filter(t => t.enSitio).length;
+    const k = [
+      ['Pendientes', ab.length, ab.filter(t => !t.tecnico).length + ' sin técnico asignado'],
+      ['Resueltos', res.length, pct(res.length, rows.length) + ' de ' + rows.length + ' casos'],
+      ['Sin respuesta +' + DIAS + ' días', sin, sin ? 'requieren atención inmediata' : 'ningún caso atrasado', sin ? 'bad' : ''],
+      ['SLA vencido', rows.filter(t => t.vencido).length, 'abiertos después de su fecha límite'],
+      ['Respuesta promedio', resp.length ? fDias(prom(resp)) : '—', resp.length + ' casos con fecha de atención'],
+      ['Duración hasta el cierre', dur.length ? fDur(prom(dur)) : '—', dur.length + ' casos cerrados con fecha'],
+      ['Antigüedad de pendientes', edad.length ? fDur(prom(edad)) : '—', edad.length ? 'el más antiguo: ' + fDur(Math.max.apply(null, edad)) : 'sin casos pendientes'],
+      ['Garantía · En sitio', gar + ' · ' + sitio, pct(gar, rows.length) + ' garantía · ' + pct(sitio, rows.length) + ' con visita']
+    ];
+    $('kpis').innerHTML = k.map(x => '<div class="kpi ' + (x[3] || '') + '"><span>' + esc(x[0]) + '</span><b>' + esc(x[1]) + '</b><small>' + esc(x[2]) + '</small></div>').join('');
+  }
+
+  function renderTec(g) {
+    const el = $('chTec');
+    const list = g.slice().sort((a, b) => b.pend - a.pend || b.res - a.res);
+    if (!list.length) { el.innerHTML = '<div class="empty">No hay casos con esos filtros.</div>'; return; }
+    const max = Math.max.apply(null, list.map(x => x.pend + x.res)) || 1;
+    const sel = $('fTec').value;
+    el.innerHTML = list.map(x => {
+      const segs = [];
+      if (x.pend) segs.push('<i class="seg" style="width:' + (x.pend / max * 100) + '%;background:var(--c-pend)" data-tip="' + esc(x.tec) + '\nPendientes: ' + x.pend + '"></i>');
+      if (x.res) segs.push('<i class="seg" style="width:' + (x.res / max * 100) + '%;background:var(--c-res)" data-tip="' + esc(x.tec) + '\nResueltos: ' + x.res + '"></i>');
+      return '<button type="button" class="hrow' + (sel === x.tec ? ' sel' : '') + '" aria-pressed="' + (sel === x.tec) + '" data-tec="' + esc(x.tec) + '" aria-label="' +
+        esc(x.tec + ': ' + x.pend + ' pendientes, ' + x.res + ' resueltos') + '">' +
+        '<span class="lbl" title="' + esc(x.tec) + '">' + esc(x.tec) + '</span><span class="track">' + segs.join('') + '</span>' +
+        '<span class="val">' + x.pend + ' pend. · ' + x.res + ' res.</span></button>';
+    }).join('');
+    el.querySelectorAll('.hrow').forEach(r => r.onclick = () => {
+      const v = r.getAttribute('data-tec'); $('fTec').value = $('fTec').value === v ? '' : v; render();
+    });
+  }
+
+  function renderEdad(rows) {
+    const ab = rows.filter(t => t.abierto && t.edad != null);
+    const B = [['< 1 día', 0, 1], ['1–' + DIAS + ' días', 1, DIAS], [DIAS + '–7 días', DIAS, 7], ['7–15 días', 7, 15], ['> 15 días', 15, Infinity]];
+    if (!ab.length) { $('chEdad').innerHTML = '<div class="empty">No hay casos pendientes con esos filtros.</div>'; return; }
+    const n = B.map(b => ab.filter(t => t.edad >= b[1] * DIA && t.edad < b[2] * DIA).length);
+    const max = Math.max.apply(null, n) || 1;
+    $('chEdad').innerHTML = '<div class="vbars">' + B.map((b, i) =>
+      '<div class="vcol"><span class="v">' + n[i] + '</span><span class="b" style="height:' + (n[i] / max * 85) + '%;background:' +
+      (b[1] >= DIAS ? 'var(--bad)' : 'var(--c-pend)') + '" data-tip="' + b[0] + ' abiertos\n' + n[i] + ' caso(s)"></span></div>').join('') + '</div>' +
+      '<div class="vlabels">' + B.map(b => '<span>' + b[0] + '</span>').join('') + '</div>';
+  }
+
+  function renderResp(g) {
+    const list = g.filter(x => x.respProm != null).sort((a, b) => b.respProm - a.respProm);
+    if (!list.length) { $('chResp').innerHTML = '<div class="empty">Ningún caso tiene fecha de atención todavía.</div>'; return; }
+    const max = Math.max.apply(null, list.map(x => x.respProm)) || 1;
+    $('chResp').innerHTML = list.map(x =>
+      '<div class="hrow"><span class="lbl" title="' + esc(x.tec) + '">' + esc(x.tec) + '</span>' +
+      '<div class="track"><i class="seg" style="width:' + Math.max(1, x.respProm / max * 100) + '%;background:var(--c-pend)" data-tip="' +
+      esc(x.tec) + '\nPromedio: ' + fDias(x.respProm) + '\nCasos atendidos: ' + x.resp.length + '"></i></div>' +
+      '<span class="val">' + fDias(x.respProm) + ' · ' + x.resp.length + ' casos</span></div>').join('');
+  }
+
+  function renderMix(rows) {
+    const n = rows.length;
+    if (!n) { $('chMix').innerHTML = '<div class="empty">No hay casos con esos filtros.</div>'; return; }
+    const res = rows.filter(t => !t.abierto);
+    const m = [
+      ['Entraron por garantía', rows.filter(t => t.gar).length, n, 'de todos los casos'],
+      ['Necesitaron visita en sitio', rows.filter(t => t.enSitio).length, n, 'de todos los casos'],
+      ['Resueltos por garantía', res.filter(t => t.gar).length, res.length, 'de los resueltos'],
+      ['Resueltos con visita en sitio', res.filter(t => t.enSitio).length, res.length, 'de los resueltos']
+    ];
+    $('chMix').innerHTML = m.map(x =>
+      '<div class="meter"><div class="top"><span>' + x[0] + '</span><b>' + x[1] + ' de ' + x[2] + ' · ' + pct(x[1], x[2]) + '</b></div>' +
+      '<div class="trk" data-tip="' + x[0] + '\n' + x[1] + ' ' + x[3] + ' (' + pct(x[1], x[2]) + ')"><div class="fill" style="width:' +
+      (x[2] ? x[1] / x[2] * 100 : 0) + '%"></div></div></div>').join('') +
+      '<div class="hint">En sitio cuenta los casos con fecha de visita o con una causa escrita en «Atención en sitio» que no empiece por «No».</div>';
+  }
+
+  /* ---------- Tablas ordenables ---------- */
+  function tabla(el, cols, rows, sort, vacio) {
+    const c = cols.filter(x => x.k === sort.k)[0] || cols[0];
+    const v = c.v || (r => r[c.k]);
+    const datos = rows.slice().sort((a, b) => {
+      const x = v(a), y = v(b);
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === 'string' ? x.localeCompare(y, 'es') : x - y) * sort.dir;
+    });
+    el.innerHTML = '<thead><tr>' + cols.map(x => '<th class="' + (x.num ? 'num' : '') + '" data-k="' + x.k + '" tabindex="0" scope="col"' +
+      (x.k === sort.k ? ' aria-sort="' + (sort.dir > 0 ? 'ascending' : 'descending') + '"' : '') + '>' + x.t + '</th>').join('') + '</tr></thead><tbody>' +
+      (datos.length ? datos.map(r => '<tr>' + cols.map(x => '<td class="' + (x.num ? 'num' : '') + '">' + x.f(r) + '</td>').join('') + '</tr>').join('')
+        : '<tr><td colspan="' + cols.length + '" class="empty">' + vacio + '</td></tr>') + '</tbody>';
+    el.querySelectorAll('th').forEach(th => {
+      const go = () => { const k = th.getAttribute('data-k'); if (sort.k === k) sort.dir *= -1; else { sort.k = k; sort.dir = -1; } render(); };
+      th.onclick = go;
+      th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    });
+  }
+
+  function renderTablaTec(g) {
+    tabla($('tTec'), [
+      { k: 'tec', t: 'Técnico', f: x => esc(x.tec) + (x.region ? '<small>' + esc(x.region) + '</small>' : '') },
+      { k: 'pend', t: 'Pendientes', num: 1, f: x => x.pend },
+      { k: 'res', t: 'Resueltos', num: 1, f: x => x.res },
+      { k: 'sinResp', t: 'Sin respuesta', num: 1, f: x => x.sinResp ? '<span class="venc">' + x.sinResp + '</span>' : '0' },
+      { k: 'venc', t: 'SLA vencido', num: 1, f: x => x.venc ? '<span class="venc">' + x.venc + '</span>' : '0' },
+      { k: 'respProm', t: 'Respuesta prom.', num: 1, f: x => fDias(x.respProm) },
+      { k: 'durProm', t: 'Duración prom.', num: 1, f: x => fDur(x.durProm) },
+      { k: 'edadProm', t: 'Antigüedad pend.', num: 1, f: x => fDur(x.edadProm) },
+      { k: 'gar', t: 'Garantía', num: 1, f: x => x.gar },
+      { k: 'sitio', t: 'En sitio', num: 1, f: x => x.sitio }
+    ], g, SORT.tec, 'No hay casos con esos filtros.');
+  }
+
+  const TABS = [
+    ['abiertos', 'Pendientes', t => t.abierto],
+    ['sinresp', 'Sin respuesta', t => t.sinResp],
+    ['resueltos', 'Resueltos', t => !t.abierto],
+    ['garantia', 'Por garantía', t => t.gar],
+    ['sitio', 'Con visita en sitio', t => t.enSitio],
+    ['todos', 'Todos', () => true]
+  ];
+
+  function renderTabs(rows) {
+    $('tabs').innerHTML = TABS.map(x => '<button type="button" role="tab" aria-selected="' + (x[0] === TAB) + '" data-tab="' + x[0] + '">' + x[1] +
+      '<span class="n">' + rows.filter(x[2]).length + '</span></button>').join('');
+    $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
+      TAB = b.getAttribute('data-tab');
+      SORT.casos = TAB === 'resueltos' || TAB === 'todos' ? { k: 'id', dir: -1 } : { k: 'edad', dir: -1 };
+      render();
+    });
+  }
+
+  function casosVisibles(rows) { return rows.filter(TABS.filter(x => x[0] === TAB)[0][2]); }
+
+  function renderCasos(rows) {
+    tabla($('tCasos'), [
+      { k: 'id', t: 'Ticket', v: t => t.fecha, f: t => '<b>' + esc(t.id) + '</b><small>' + fFecha(t.fecha) + '</small>' },
+      { k: 'cliente', t: 'Cliente', f: t => esc(t.cliente) + '<small>' + esc(t.estado) + ' · ' + esc(t.region) + '</small>' },
+      { k: 'equipo', t: 'Equipo', f: t => esc(t.equipo) + (t.serial ? '<small>Serial ' + esc(t.serial) + '</small>' : '') },
+      { k: 'tec', t: 'Técnico', f: t => t.tecnico ? esc(t.tecnico) : '<span class="venc">Sin técnico</span>' },
+      { k: 'prioridad', t: 'Prioridad', f: t => '<span class="' + clsPri(t.prioridad) + '">' + esc(t.prioridad) + '</span>' },
+      { k: 'estatus', t: 'Estatus', f: t => badge(t.estatus) + (t.vencido ? '<small class="venc">SLA vencido</small>' : '') },
+      { k: 'edad', t: 'Tiempo abierto', num: 1, v: t => t.abierto ? t.edad : t.dur,
+        f: t => t.abierto ? (t.sinResp ? '<span class="venc">' + fDur(t.edad) + '</span><small>sin respuesta</small>' : fDur(t.edad))
+          : fDur(t.dur) + '<small>hasta el cierre</small>' },
+      { k: 'respDias', t: 'Respuesta', num: 1, f: t => t.respDias != null ? fDias(t.respDias) + '<small>' + fFecha(t.atencion) + '</small>' : '—' },
+      { k: 'gar', t: 'Garantía', v: t => t.garantia, f: t => esc(t.garantia || '—') },
+      { k: 'enSitio', t: 'En sitio', v: t => t.enSitio ? 1 : 0, f: t => t.enSitio ? 'Sí' + (t.visita ? '<small>visita ' + fFecha(t.visita) + '</small>' : '') + (t.sitio ? '<small>' + esc(t.sitio.slice(0, 80)) + '</small>' : '') : 'No' }
+    ], casosVisibles(rows), SORT.casos, 'No hay casos en esta vista.');
+  }
+
+  /* ---------- Exportar CSV (vista actual) ---------- */
+  function exportarCsv() {
+    if (!D) return;
+    const rows = casosVisibles(filtrados());
+    const cols = [['Ticket', t => t.id], ['Fecha', t => fFecha(t.fecha)], ['Cliente', t => t.cliente], ['Estado', t => t.estado], ['Región', t => t.region],
+      ['Equipo', t => t.equipo], ['Serial', t => t.serial], ['Técnico', t => t.tecnico], ['Prioridad', t => t.prioridad], ['Estatus', t => t.estatus],
+      ['Atención', t => fFecha(t.atencion)], ['Cierre', t => fFecha(t.cierre)], ['Respuesta (días)', t => t.respDias == null ? '' : t.respDias],
+      ['Garantía', t => t.garantia], ['En sitio', t => t.enSitio ? 'Sí' : 'No'], ['SLA vencido', t => t.vencido ? 'Sí' : 'No']];
+    const q = v => { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const csv = '﻿' + [cols.map(c => c[0]).join(';')].concat(rows.map(r => cols.map(c => q(c[1](r))).join(';'))).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'casos-' + TAB + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    aviso(rows.length + ' casos exportados.');
+  }
+
+  /* ---------- Tooltip ---------- */
+  const tip = $('tip');
+  function mostrarTip(el, x, y) {
+    tip.textContent = el.getAttribute('data-tip'); tip.hidden = false;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(window.innerWidth - w - 8, x + 14) + 'px';
+    tip.style.top = Math.max(8, y - h - 10) + 'px';
+  }
+  document.addEventListener('mousemove', e => {
+    const el = e.target.closest('[data-tip]');
+    if (el) mostrarTip(el, e.clientX, e.clientY); else tip.hidden = true;
+  });
+  document.addEventListener('scroll', () => { tip.hidden = true; }, true);
+
+  /* ---------- Eventos ---------- */
+  $('lnkHome').href = '/';
+  $('lnkPanel').href = '/panel';
+  $('lnkDash').href = '/dashboard';
+  $('btnSalir').onclick = () => { Sesion.clear(); location.href = '/dashboard'; };
+  $('loginBox').onsubmit = ev => { ev.preventDefault(); entrar($('clave').value, true); };
+  $('btnRef').onclick = () => cargar(true);
+  $('btnCsv').onclick = exportarCsv;
+  $('btnAlertas').onclick = enviarAlertas;
+  ['fDesde', 'fHasta', 'fReg', 'fTec', 'fPri'].forEach(id => $(id).onchange = render);
+  $('btnLimpiar').onclick = () => { ['fDesde', 'fHasta', 'fReg', 'fTec', 'fPri'].forEach(id => $(id).value = ''); render(); };
+  setInterval(() => { if (D && document.visibilityState === 'visible') cargar(); }, 120000);
+
+  const guardada = Sesion.get();
+  if (guardada) entrar(guardada, false); else $('clave').focus();
+</script>
+</body>
+</html>
