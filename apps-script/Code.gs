@@ -142,6 +142,17 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// Ejecútala UNA vez desde el editor (Ejecutar ▶) para aceptar todos los permisos que usa la app
+function autorizar() {
+  SpreadsheetApp.getActiveSpreadsheet().getName();
+  MailApp.getRemainingDailyQuota();
+  Session.getEffectiveUser().getEmail();
+  CacheService.getScriptCache();
+  LockService.getScriptLock();
+  ScriptApp.getProjectTriggers();
+  console.log('Permisos aceptados. Ahora publica una nueva versión de la implementación.');
+}
+
 // Menú: revisa la configuración y envía un correo de prueba a quien lo ejecuta
 function diagnostico() {
   const ui = SpreadsheetApp.getUi(), L = [];
@@ -1279,4 +1290,3 @@ function enviarAlerta_(t, dias, tecnico, correoTec, admin) {
   }
   return false;
 }
-
