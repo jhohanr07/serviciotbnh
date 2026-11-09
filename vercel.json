@@ -4,8 +4,8 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/panel", "destination": "/index.html" },
-    { "source": "/estado", "destination": "/index.html" }
+    { "source": "/panel", "destination": "/" },
+    { "source": "/estado", "destination": "/" }
   ],
   "functions": {
     "api/rpc.js": { "maxDuration": 30 }
