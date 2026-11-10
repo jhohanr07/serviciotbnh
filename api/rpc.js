@@ -69,8 +69,9 @@ export default async function handler(req, res) {
     return responder(res, 403, { ok: false, error: 'Origen no permitido.' });
   }
 
-  const url = process.env.APPS_SCRIPT_URL;
-  const token = process.env.API_TOKEN;
+  const url = String(process.env.APPS_SCRIPT_URL || '').trim();
+  // Se limpian espacios, saltos de línea y comillas que se cuelan al pegar en Vercel
+  const token = String(process.env.API_TOKEN || '').trim().replace(/^["']+|["']+$/g, '').trim();
   if (!url || !token) {
     return responder(res, 500, { ok: false, error: 'Falta configurar APPS_SCRIPT_URL o API_TOKEN en Vercel.' });
   }

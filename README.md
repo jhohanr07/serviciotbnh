@@ -118,10 +118,12 @@ Las alertas automáticas siguen funcionando igual (activador de Apps Script): **
 | Mensaje | Causa y solución |
 |---|---|
 | *Falta configurar APPS_SCRIPT_URL o API_TOKEN en Vercel* | Faltan las variables. Agrégalas y haz **Redeploy** (las variables solo aplican a despliegues nuevos). |
-| *No autorizado.* | `API_TOKEN` de Vercel y del script no coinciden. Cópialo otra vez sin espacios. |
+| *No autorizado: … huella X … huella Y* | El `API_TOKEN` de Vercel y el del script son distintos. Menú **Generar token para Vercel → Sí** (ver el actual), pega ese valor en Vercel y haz **Redeploy**. Cuando las dos huellas coincidan, funciona. |
 | *El backend no respondió bien…* | La implementación no tiene acceso **Cualquier persona**, o no publicaste una **Nueva versión** después de pegar el código. |
 | *Falta URL_APP…* al crear un ticket | Agrega `URL_APP` en las propiedades del script (paso 4). |
 | Enlaces del correo abren Apps Script | `URL_APP` vacío o con la URL `/exec`; debe ser el dominio de Vercel. |
+| *Apps Script necesita permisos* | En el editor elige la función `autorizar` → ▶ Ejecutar → acepta → publica **Nueva versión**. |
+| *código repetido* | Hay dos archivos `.gs` con el mismo código: deja solo `Code.gs`. |
 | *Demasiados intentos* | Límite por minuto del puente (`api/rpc.js` → `LIMITES`). |
 
 ## Seguridad

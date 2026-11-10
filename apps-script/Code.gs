@@ -91,9 +91,14 @@ function doPost(e) {
   let out;
   try {
     const req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    const token = propiedad_('API_TOKEN');
-    if (!token) throw new Error('Falta API_TOKEN en las propiedades del script.');
-    if (String(req.token || '') !== token) { Utilities.sleep(800); throw new Error('No autorizado.'); }
+    const token = limpiarToken_(propiedad_('API_TOKEN'));
+    if (!token) throw new Error('Falta API_TOKEN en las propiedades del script. Usa el menú Servicio técnico > Generar token para Vercel.');
+    const recibido = limpiarToken_(req.token);
+    if (recibido !== token) {
+      Utilities.sleep(800);
+      throw new Error('No autorizado: el API_TOKEN de Vercel (huella ' + huella_(recibido) + ') no coincide con el del script (huella ' +
+        huella_(token) + '). Copia el mismo token en Vercel y haz Redeploy.');
+    }
     const f = apiPermitida_(String(req.fn || ''));
     if (!f) throw new Error('Función no permitida.');
     out = f.apply(null, Array.isArray(req.args) ? req.args : []);
@@ -102,6 +107,18 @@ function doPost(e) {
   }
   return ContentService.createTextOutput(JSON.stringify(out === undefined ? { ok: true } : out))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Quita espacios, saltos de línea y comillas que se cuelan al copiar y pegar
+function limpiarToken_(x) {
+  return String(x == null ? '' : x).trim().replace(/^["']+|["']+$/g, '').trim();
+}
+
+// Primeros 6 caracteres del SHA-256: sirve para comparar tokens sin mostrarlos
+function huella_(x) {
+  if (!x) return 'vacío';
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, x, Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 6);
 }
 
 /* ===================== ENLACES ===================== */
@@ -159,7 +176,7 @@ function diagnostico() {
   const chk = function (ok, txt) { L.push((ok ? '✅ ' : '❌ ') + txt); };
   const url = urlApp_();
   chk(!!url && !/script\.google\.com/.test(url), 'URL_APP: ' + (url || 'vacía (los correos salen sin botón)'));
-  chk(!!propiedad_('API_TOKEN'), 'API_TOKEN ' + (propiedad_('API_TOKEN') ? 'configurado' : 'falta'));
+  chk(!!propiedad_('API_TOKEN'), 'API_TOKEN ' + (propiedad_('API_TOKEN') ? 'configurado (huella ' + huella_(limpiarToken_(propiedad_('API_TOKEN'))) + ')' : 'falta'));
   chk(!!propiedad_('CLAVE_PANEL'), 'CLAVE_PANEL ' + (propiedad_('CLAVE_PANEL') ? 'configurada' : 'falta'));
   let cuota = -1;
   try { cuota = MailApp.getRemainingDailyQuota(); } catch (e) { L.push('❌ No se pudo leer la cuota de correo: ' + e.message); }
@@ -193,7 +210,8 @@ function generarTokenApi() {
     t = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
     PropertiesService.getScriptProperties().setProperty('API_TOKEN', t);
   }
-  ui.alert('Token para Vercel', 'Cópialo en Vercel > Settings > Environment Variables como API_TOKEN:\n\n' + t, ui.ButtonSet.OK);
+  ui.alert('Token para Vercel', 'Cópialo en Vercel > Settings > Environment Variables como API_TOKEN:\n\n' + t +
+    '\n\nHuella: ' + huella_(t) + '\nDespués de pegarlo en Vercel, haz Redeploy.', ui.ButtonSet.OK);
 }
 
 /* ===================== CONFIGURACIÓN INICIAL ===================== */
