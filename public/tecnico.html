@@ -30,7 +30,8 @@
 <body>
 <header class="appbar">
   <div class="appbar-in">
-    <span class="brand"><span class="brand-mark" aria-hidden="true">+</span><span><small>Ficha del técnico</small><b>BNH Medical</b></span></span>
+    <a class="brand" href="/tecnicos"><span class="brand-mark" aria-hidden="true">+</span><span><small>Ficha del técnico</small><b>BNH Medical</b></span></a>
+    <nav class="nav" aria-label="Secciones"><a href="/tecnicos">Mis casos</a></nav>
   </div>
 </header>
 
@@ -49,6 +50,12 @@
     <div id="roMsg" class="msg info" hidden style="margin-top:0;margin-bottom:8px">Coordinación cerró este ticket. Solo puedes consultarlo.</div>
     <fieldset>
       <legend><span class="num" aria-hidden="true">1</span>Atención</legend>
+      <div class="field">
+        <label for="prioridad">Urgencia</label>
+        <select id="prioridad" aria-describedby="prioridadHint prioridadErr"></select>
+        <div class="hint" id="prioridadHint">Corrígela si el cliente la marcó mal. La fecha límite se recalcula desde el reporte.</div>
+        <div class="ferr" id="prioridadErr"></div>
+      </div>
       <div class="grid2">
         <div class="field">
           <label for="fechaAtencion">Fecha de atención</label>
@@ -112,7 +119,7 @@
   const ID = /^TK-\d+$/.test(QS.get('id') || '') ? QS.get('id') : '';
   const TK = /^[0-9a-f]{32}$/.test(QS.get('t') || '') ? QS.get('t') : '';
   if (ID) document.title = 'Ticket ' + ID + ' · BNH Medical';
-  const CAMPOS = ['fechaAtencion', 'estatus', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'];
+  const CAMPOS = ['prioridad', 'fechaAtencion', 'estatus', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'];
   let T = null, ORIGINAL = '', SUCIO = false;
 
   function err(m) { $('msgErr').textContent = m; $('msgErr').hidden = false; }
@@ -171,6 +178,8 @@
       const t = await api('getTicketTecnico', ID, TK);
       if (!t.ok) throw new Error(t.error);
       T = t; pintarInfo(t);
+      $('prioridad').innerHTML = (t.urgencias || []).map(u => '<option value="' + esc(u.id) + '">' + esc(u.id + ' · ' + u.texto + ' (' + u.horas + ' h)') + '</option>').join('');
+      $('prioridad').value = t.prioridad;
       $('estatus').innerHTML = t.estatusTecnico.map(s => '<option>' + esc(s) + '</option>').join('');
       $('estatus').value = t.estatusTecnico.indexOf(t.estatus) >= 0 ? t.estatus : t.estatusTecnico[0];
       ['fechaAtencion', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'].forEach(k => $(k).value = t[k] || '');
@@ -216,6 +225,11 @@
       const r = await api('guardarTicketTecnico', ID, TK, d);
       if (!r.ok) { if (r.campo) { setErr(r.campo, r.error); $(r.campo).focus(); } throw new Error(r.error); }
       T.estatus = r.estatus; $('estBadge').innerHTML = badge(r.estatus);
+      if (r.prioridad && (r.prioridad !== T.prioridad || r.limite !== T.limite)) {
+        T.prioridad = r.prioridad; T.limite = r.limite; T.vencido = !!r.vencido;
+        T.urgencia = ((T.urgencias || []).filter(u => u.id === r.prioridad)[0] || {}).texto || T.urgencia;
+        pintarInfo(T);
+      }
       ORIGINAL = JSON.stringify(valores()); marcarSucio();
       aviso(r.avisoCliente ? 'Ticket resuelto. Avisamos al cliente por correo.' : 'Cambios guardados.');
     } catch (ex) { aviso(ex.message, 'err'); }

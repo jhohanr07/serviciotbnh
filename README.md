@@ -7,7 +7,7 @@ Sistema de tickets de servicio técnico: formulario para clientes, consulta de e
 - **Sin claves JSON:** el Apps Script se ejecuta como tú y Vercel solo le habla con un token secreto.
 
 ```
-Navegador ──► Vercel (/ , /estado, /panel, /dashboard, /tecnico)
+Navegador ──► Vercel (/ , /estado, /panel, /dashboard, /tecnico, /tecnicos)
                  │
                  └─► /api/rpc  ──POST + API_TOKEN──►  Apps Script (doPost)  ──►  Google Sheet
                                                          └─ correos (MailApp) y alertas automáticas
@@ -20,6 +20,7 @@ public/                 Páginas que publica Vercel
   index.html            Formulario (/), consulta de estado (/estado) y panel (/panel)
   dashboard.html        Dashboard (/dashboard)
   tecnico.html          Ficha del técnico (/tecnico?id=…&t=…)
+  tecnicos.html         Panel de cada técnico (/tecnicos): entra con su correo + código
   assets/estilos.css    Sistema de diseño
   assets/comun.js       Utilidades y llamada a la API
 api/rpc.js              Puente Vercel → Apps Script (agrega el token)
@@ -124,6 +125,8 @@ Las alertas automáticas siguen funcionando igual (activador de Apps Script): **
 | Enlaces del correo abren Apps Script | `URL_APP` vacío o con la URL `/exec`; debe ser el dominio de Vercel. |
 | *Apps Script necesita permisos* | En el editor elige la función `autorizar` → ▶ Ejecutar → acepta → publica **Nueva versión**. |
 | *código repetido* | Hay dos archivos `.gs` con el mismo código: deja solo `Code.gs`. |
+| `404 DEPLOYMENT_NOT_FOUND` al abrir el botón del correo | `URL_APP` apunta a un dominio que ya no existe. Copia el dominio de **Vercel → proyecto → Settings → Domains** en la propiedad `URL_APP` (sin barra final) y reenvía el correo desde el panel. |
+| El técnico no recibe el código de `/tecnicos` | Su correo no está en la hoja TECNICOS o la columna Activo no dice `SI`. |
 | *Demasiados intentos* | Límite por minuto del puente (`api/rpc.js` → `LIMITES`). |
 
 ## Seguridad
@@ -132,3 +135,4 @@ Las alertas automáticas siguen funcionando igual (activador de Apps Script): **
 - `api/rpc.js` y `doPost` solo aceptan una lista cerrada de funciones.
 - No guardes claves en celdas del Sheet: cualquiera con acceso al archivo las vería.
 - La ficha del técnico usa un enlace firmado (HMAC) por ticket.
+- El panel `/tecnicos` pide un código de 6 dígitos que llega al correo del técnico (vence en 10 minutos, máximo 5 intentos). La sesión dura 7 días en ese navegador.

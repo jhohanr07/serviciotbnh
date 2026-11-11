@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mis casos · BNH Medical</title>
+<meta name="description" content="Panel de casos para técnicos de BNH Medical.">
+<meta name="theme-color" content="#00668a">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/estilos.css">
+<style>
+  .codigo { font-size: 26px; letter-spacing: .4em; text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--brand); font: inherit; font-size: 14px; text-decoration: underline; cursor: pointer; }
+  .tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 10px; margin-bottom: 14px; }
+  @media (max-width: 640px) { .tools { grid-template-columns: minmax(0, 1fr); } }
+  .tools select, .tools input { min-height: 42px; }
+  .lista { display: grid; gap: 10px; }
+  .caso { display: block; text-decoration: none; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 14px 16px; box-shadow: var(--sh-1); transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+  .caso:hover { border-color: var(--brand); box-shadow: var(--sh-2); }
+  .caso.alerta { border-left: 5px solid var(--bad); }
+  .caso-top { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .caso-top .id { font-weight: 700; font-size: 16px; }
+  .caso-top .row { gap: 8px; }
+  .caso h3 { font-size: 15px; margin: 6px 0 2px; font-weight: 600; }
+  .caso p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .caso .pie { display: flex; gap: 6px 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+  .caso .pie b { color: var(--ink); font-weight: 600; }
+  .quien { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Saltar al contenido</a>
+<header class="appbar">
+  <div class="appbar-in">
+    <a class="brand" href="/tecnicos"><span class="brand-mark" aria-hidden="true">+</span><span><small>Panel del técnico</small><b>BNH Medical</b></span></a>
+    <nav class="nav" aria-label="Secciones"><button type="button" id="btnSalir" hidden>Salir</button></nav>
+  </div>
+</header>
+
+<main id="main">
+  <!-- Paso 1: correo -->
+  <form class="card login" id="frmCorreo" novalidate>
+    <div class="eyebrow">Técnicos</div>
+    <h1 style="font-size:20px">Entra a tus casos</h1>
+    <p class="lead" style="font-size:14px">Escribe el correo con el que estás registrado. Te enviaremos un código de 6 dígitos.</p>
+    <div class="field">
+      <label for="correo">Correo</label>
+      <input id="correo" type="email" inputmode="email" autocomplete="email" spellcheck="false" placeholder="nombre@bnhmedical.com">
+    </div>
+    <div id="errCorreo" class="msg err" hidden role="alert"></div>
+    <button class="btn block" id="btnCodigo" type="submit" style="margin-top:18px">Enviar código</button>
+  </form>
+
+  <!-- Paso 2: código -->
+  <form class="card login" id="frmCodigo" novalidate hidden>
+    <div class="eyebrow">Técnicos</div>
+    <h1 style="font-size:20px">Revisa tu correo</h1>
+    <p class="lead" style="font-size:14px" id="txtEnviado"></p>
+    <div class="field">
+      <label for="codigo">Código de 6 dígitos</label>
+      <input id="codigo" class="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" placeholder="••••••">
+    </div>
+    <div id="errCodigo" class="msg err" hidden role="alert"></div>
+    <button class="btn block" id="btnEntrar" type="submit" style="margin-top:18px">Entrar</button>
+    <p style="margin:14px 0 0;text-align:center"><button type="button" class="linkbtn" id="btnOtroCorreo">Usar otro correo o pedir otro código</button></p>
+  </form>
+
+  <!-- Panel -->
+  <div id="panel" hidden>
+    <div class="quien">
+      <div><div class="eyebrow" id="region"></div><h1 style="font-size:22px" id="nombre"></h1></div>
+      <div class="row"><span class="meta" id="actualizado" style="color:var(--muted);font-size:13px" aria-live="polite"></span>
+        <button class="btn ghost sm" id="btnRef" type="button">Actualizar</button></div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="tools" role="search">
+      <select id="fVista" aria-label="Qué casos ver">
+        <option value="abiertos">Casos abiertos</option>
+        <option value="resueltos">Resueltos y cerrados</option>
+        <option value="todos">Todos</option>
+      </select>
+      <input id="fTxt" type="search" placeholder="Buscar cliente, equipo, serial o ticket…" aria-label="Buscar">
+    </div>
+    <div class="lista" id="lista"><div class="skeleton" style="height:96px"></div><div class="skeleton" style="height:96px"></div></div>
+  </div>
+</main>
+
+<script src="/assets/comun.js"></script>
+<script>
+  // Sesión del técnico: dura 7 días en este navegador
+  const SesTec = {
+    get() { try { return localStorage.getItem('st2_tec') || ''; } catch (e) { return ''; } },
+    set(v) { try { localStorage.setItem('st2_tec', v); } catch (e) {} },
+    clear() { try { localStorage.removeItem('st2_tec'); } catch (e) {} }
+  };
+  let DATA = null, RAPIDO = '';
+  const peso = { P1: 1, P2: 2, P3: 3, P4: 4 };
+
+  function verPaso(paso) {
+    $('frmCorreo').hidden = paso !== 'correo';
+    $('frmCodigo').hidden = paso !== 'codigo';
+    $('panel').hidden = paso !== 'panel';
+    $('btnSalir').hidden = paso !== 'panel';
+    if (paso === 'correo') $('correo').focus();
+    if (paso === 'codigo') $('codigo').focus();
+  }
+  function errorEn(id, msg) { $(id).textContent = msg; $(id).hidden = !msg; }
+
+  $('frmCorreo').onsubmit = async ev => {
+    ev.preventDefault(); errorEn('errCorreo', '');
+    const correo = $('correo').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) return errorEn('errCorreo', 'Escribe un correo válido.');
+    ocupado($('btnCodigo'), true, 'Enviando…');
+    try {
+      const r = await api('tecnicoSolicitarCodigo', correo);
+      if (!r.ok) throw new Error(r.error);
+      $('txtEnviado').textContent = r.mensaje + ' Lo enviamos a ' + correo + '.';
+      $('codigo').value = ''; errorEn('errCodigo', '');
+      verPaso('codigo');
+    } catch (e) { errorEn('errCorreo', e.message); }
+    ocupado($('btnCodigo'), false);
+  };
+
+  $('codigo').addEventListener('input', () => {
+    $('codigo').value = $('codigo').value.replace(/\D/g, '').slice(0, 6);
+    if ($('codigo').value.length === 6) $('frmCodigo').requestSubmit();
+  });
+
+  $('frmCodigo').onsubmit = async ev => {
+    ev.preventDefault(); errorEn('errCodigo', '');
+    if ($('codigo').value.length !== 6) return errorEn('errCodigo', 'El código tiene 6 dígitos.');
+    ocupado($('btnEntrar'), true, 'Entrando…');
+    try {
+      const r = await api('tecnicoVerificarCodigo', $('correo').value.trim(), $('codigo').value);
+      if (!r.ok) throw new Error(r.error);
+      SesTec.set(r.sesion);
+      verPaso('panel');
+      await cargar();
+    } catch (e) { errorEn('errCodigo', e.message); $('codigo').select(); }
+    ocupado($('btnEntrar'), false);
+  };
+
+  $('btnOtroCorreo').onclick = () => verPaso('correo');
+  $('btnSalir').onclick = () => { SesTec.clear(); DATA = null; verPaso('correo'); };
+  $('btnRef').onclick = () => cargar(true);
+  $('fVista').onchange = () => { RAPIDO = ''; render(); };
+  $('fTxt').oninput = render;
+
+  async function cargar(manual) {
+    if (manual) ocupado($('btnRef'), true);
+    try {
+      const r = await api('getPanelTecnico', SesTec.get());
+      if (!r.ok) {
+        if (r.sesion) { SesTec.clear(); verPaso('correo'); errorEn('errCorreo', r.error); return; }
+        throw new Error(r.error);
+      }
+      DATA = r;
+      $('nombre').textContent = r.tecnico.nombre;
+      $('region').textContent = 'Región ' + r.tecnico.region;
+      $('correo').value = r.tecnico.correo;
+      render();
+      $('actualizado').textContent = 'Actualizado ' + horaCorta();
+    } catch (e) {
+      $('lista').innerHTML = '<div class="card empty">No se pudieron cargar tus casos: ' + esc(e.message) + '</div>';
+    } finally { if (manual) ocupado($('btnRef'), false); }
+  }
+
+  const RAPIDOS = { vencidos: t => t.vencido, sinresp: t => t.sinResp, p1: t => t.abierto && t.prioridad === 'P1' };
+
+  function render() {
+    if (!DATA) return;
+    const all = DATA.tickets, n = f => all.filter(f).length;
+    const k = [
+      ['', 'Abiertos', n(t => t.abierto), 'asignados a ti'],
+      ['p1', 'Críticos (P1)', n(RAPIDOS.p1), 'abiertos'],
+      ['sinresp', 'Sin respuesta +' + DATA.diasAlerta + ' días', n(RAPIDOS.sinresp), 'registra la atención', n(RAPIDOS.sinresp) ? 'bad' : ''],
+      ['vencidos', 'SLA vencido', n(RAPIDOS.vencidos), 'fuera de plazo', n(RAPIDOS.vencidos) ? 'bad' : '']
+    ];
+    $('kpis').innerHTML = k.map(x => '<button type="button" class="kpi ' + (x[4] || '') + '" data-q="' + x[0] + '" aria-pressed="' + (RAPIDO === x[0] && !!x[0]) + '">' +
+      '<span>' + esc(x[1]) + '</span><b>' + x[2] + '</b><small>' + esc(x[3]) + '</small></button>').join('');
+    $('kpis').querySelectorAll('button').forEach(b => b.onclick = () => {
+      const q = b.getAttribute('data-q');
+      RAPIDO = RAPIDO === q ? '' : q;
+      if (RAPIDO || !q) $('fVista').value = 'abiertos';
+      render();
+    });
+
+    const vista = $('fVista').value, q = $('fTxt').value.trim().toLowerCase();
+    const rows = all.filter(t =>
+      (vista === 'todos' || (vista === 'abiertos' ? t.abierto : !t.abierto)) &&
+      (!RAPIDO || RAPIDOS[RAPIDO](t)) &&
+      (!q || (t.id + ' ' + t.cliente + ' ' + t.equipo + ' ' + t.serial + ' ' + t.solicitud).toLowerCase().indexOf(q) >= 0)
+    ).sort((a, b) => vista === 'abiertos'
+      ? (b.sinResp - a.sinResp) || (b.vencido - a.vencido) || ((peso[a.prioridad] || 9) - (peso[b.prioridad] || 9)) || ((a.fechaMs || 0) - (b.fechaMs || 0))
+      : (b.cierreMs || b.fechaMs || 0) - (a.cierreMs || a.fechaMs || 0));
+
+    $('lista').innerHTML = rows.length ? rows.map(t =>
+      '<a class="caso' + (t.sinResp || t.vencido ? ' alerta' : '') + '" href="/tecnico?id=' + encodeURIComponent(t.id) + '&t=' + encodeURIComponent(t.t) + '">' +
+      '<div class="caso-top"><span class="id">' + esc(t.id) + '</span><span class="row"><span class="' + clsPri(t.prioridad) + '">' + esc(t.prioridad) + '</span>' + badge(t.estatus) + '</span></div>' +
+      '<h3>' + esc(t.cliente) + '</h3>' +
+      '<p>' + esc(t.solicitud) + ' · ' + esc(t.equipo) + (t.serial ? ' · S/N ' + esc(t.serial) : '') + '</p>' +
+      '<div class="pie"><span>' + esc(t.estado) + '</span><span>Reportado <b>' + esc(t.fecha.split(' ')[0]) + '</b></span>' +
+      (t.abierto ? '<span' + (t.vencido ? ' class="venc"' : '') + '>Límite <b' + (t.vencido ? ' class="venc"' : '') + '>' + esc(t.limite) + '</b></span>' : '<span>Cierre <b>' + esc(t.cierre.split(' ')[0]) + '</b></span>') +
+      (t.sinResp ? '<span class="venc">Sin respuesta</span>' : '') + '</div></a>').join('')
+      : '<div class="card empty">' + (all.length ? 'No hay casos con esos filtros.' : 'No tienes casos asignados.') + '</div>';
+  }
+
+  setInterval(() => { if (DATA && document.visibilityState === 'visible') cargar(); }, 120000);
+  if (SesTec.get()) { verPaso('panel'); cargar(); } else verPaso('correo');
+</script>
+</body>
+</html>

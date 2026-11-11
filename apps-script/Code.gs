@@ -82,6 +82,8 @@ function apiPermitida_(fn) {
     getTicketTecnico: getTicketTecnico, guardarTicketTecnico: guardarTicketTecnico,
     panelLogin: panelLogin, getPanelData: getPanelData, actualizarTicket: actualizarTicket,
     reenviarTecnico: reenviarTecnico, getDashboardData: getDashboardData, enviarAlertasAhora: enviarAlertasAhora,
+    tecnicoSolicitarCodigo: tecnicoSolicitarCodigo, tecnicoVerificarCodigo: tecnicoVerificarCodigo,
+    getPanelTecnico: getPanelTecnico,
     ping: function () { return { ok: true, empresa: EMPRESA, hora: fmt_(new Date()) }; }
   }[fn] || null;
 }
@@ -266,7 +268,8 @@ function configurarHojas() {
 function mostrarEnlaces() {
   const b = urlApp_();
   SpreadsheetApp.getUi().alert(b ? 'Formulario: ' + b + '/\nConsulta del cliente: ' + b + '/estado\n' +
-    'Panel: ' + b + '/panel\nDashboard: ' + b + '/dashboard'
+    'Panel: ' + b + '/panel\nDashboard: ' + b + '/dashboard\nPanel de técnicos: ' + b + '/tecnicos' +
+    '\n\nSi algún enlace da DEPLOYMENT_NOT_FOUND, URL_APP está mal: copia el dominio de Vercel > tu proyecto > Settings > Domains.'
     : 'Falta URL_APP: escribe el dominio de Vercel en Configuración del proyecto > Propiedades del script.');
 }
 
@@ -631,7 +634,8 @@ function enviarTecnico_(c, tec, reenvio) {
         ['Equipo', c.equipo + (c.serial ? ' (serial ' + c.serial + ')' : '')],
         ['Prioridad', c.prioridad + ' - ' + c.urgTexto], ['Fecha límite', c.limite]],
       bloque: { titulo: tituloBloque_(c.tipo || TIPO_FALLA), texto: c.descripcion },
-      boton: { texto: 'Abrir ticket', url: link }
+      boton: { texto: 'Abrir ticket', url: link },
+      pie: enlace_('tecnicos') ? 'Todos tus casos: ' + enlace_('tecnicos') : ''
     }),
     body: 'Ticket ' + c.id + ' · ' + (c.tipo || TIPO_FALLA) + '\nCliente: ' + c.cliente + '\nEquipo: ' + c.equipo + '\nPrioridad: ' + c.prioridad +
       '\n\n' + c.descripcion + '\n\nAbrir ticket: ' + link
@@ -752,7 +756,8 @@ function getTicketTecnico(id, tk) {
       sitio: String(t['Atencion en sitio'] || ''), fechaVisita: fechaInput_(t['Fecha de la visita']),
       garantia: String(t['Garantia'] || ''), fechaCierre: fechaInput_(t['Fecha cierre']),
       fechaReporte: fechaInput_(t['Fecha']), hoy: fechaInput_(new Date()),
-      editable: est !== 'Cerrado', estatusTecnico: ESTATUS_TECNICO
+      editable: est !== 'Cerrado', estatusTecnico: ESTATUS_TECNICO,
+      urgencias: URGENCIAS.map(function (u) { return { id: u.id, texto: u.texto, horas: u.horas }; })
     };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -771,11 +776,13 @@ function guardarTicketTecnico(id, tk, d) {
     const sitio = String(d.sitio || '').trim().slice(0, 1500);
     const garantia = String(d.garantia || '').trim();
     const pedido = String(d.estatus || '').trim();
+    const prioridad = String(d.prioridad || '').trim();
     const hoy = diaN_(new Date());
 
     const err = function (msg, campo) { const e = new Error(msg); e.campo = campo; throw e; };
     if (garantia && ['Sí', 'No'].indexOf(garantia) < 0) err('Garantía no válida.', 'garantia');
     if (pedido && ESTATUS_TECNICO.indexOf(pedido) < 0) err('Estatus no válido.', 'estatus');
+    if (prioridad && !URGENCIAS.some(function (u) { return u.id === prioridad; })) err('Urgencia no válida.', 'prioridad');
     if (fAtencion && diaN_(fAtencion) > hoy) err('La fecha de atención no puede ser futura.', 'fechaAtencion');
     if (fCierre && diaN_(fCierre) > hoy) err('La fecha de cierre no puede ser futura.', 'fechaCierre');
     if (pedido && !fAtencion) err('Registra primero la fecha de atención.', 'fechaAtencion');
@@ -801,20 +808,142 @@ function guardarTicketTecnico(id, tk, d) {
     else if (antes === 'Resuelto' || ESTATUS_TECNICO.indexOf(antes) >= 0) est = t['Técnico asignado'] ? 'Asignado' : 'Sin asignar';
 
     const sh = hoja_('TICKETS');
-    escribir_(sh, t._fila, {
+    const cambios = {
       'Fecha de atencion': fAtencion, 'Observaciones': seguro_(obs), 'Atencion en sitio': seguro_(sitio),
       'Fecha de la visita': fVisita, 'Garantia': garantia, 'Fecha cierre': fCierre, 'Estatus': est
-    });
+    };
+    // Si el técnico corrige la urgencia, la fecha límite se recalcula desde el reporte
+    let limite = aFecha_(t['Fecha límite SLA']);
+    if (prioridad && prioridad !== String(t['Prioridad'])) {
+      cambios['Prioridad'] = prioridad;
+      if (fRep) { limite = new Date(fRep.getTime() + urgencia_(prioridad).horas * 3600000); cambios['Fecha límite SLA'] = limite; }
+    }
+    escribir_(sh, t._fila, cambios);
     SpreadsheetApp.flush();
     lock.releaseLock();
     lock = null;
 
     if (est === 'Resuelto' && antes !== 'Resuelto') notificarResuelto_(t);
-    return { ok: true, estatus: est, avisoCliente: est === 'Resuelto' && antes !== 'Resuelto' };
+    return { ok: true, estatus: est, avisoCliente: est === 'Resuelto' && antes !== 'Resuelto',
+      prioridad: prioridad || String(t['Prioridad']), limite: fmt_(limite),
+      vencido: ESTATUS_ABIERTOS.indexOf(est) >= 0 && !!limite && limite.getTime() < Date.now() };
   } catch (e) {
     return { ok: false, error: e.message, campo: e.campo || '' };
   } finally {
     if (lock) lock.releaseLock();
+  }
+}
+
+/* ===================== PANEL DE CADA TÉCNICO (/tecnicos) ===================== */
+// El técnico entra con su correo de la hoja TECNICOS y un código de 6 dígitos que le llega a ese correo.
+// Así nadie entra solo con saber el correo de otro.
+
+const DIAS_SESION_TECNICO = 7;
+
+function tecnicoPorCorreo_(correo) {
+  correo = String(correo || '').trim().toLowerCase();
+  if (!correo) return null;
+  return leer_('TECNICOS').filter(function (t) {
+    return esActivo_(t) && String(t['Correo'] || '').trim().toLowerCase() === correo;
+  })[0] || null;
+}
+
+function firma_(texto) {
+  return Utilities.computeHmacSha256Signature(String(texto), secreto_())
+    .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('').slice(0, 40);
+}
+
+function claveOtp_(correo) { return 'otp_' + huella_(String(correo).toLowerCase()) + firma_('otp|' + correo).slice(0, 8); }
+
+// Paso 1: envía el código. La respuesta es la misma exista o no el correo.
+function tecnicoSolicitarCodigo(correo) {
+  try {
+    correo = String(correo || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) throw new Error('Escribe un correo válido.');
+    const tec = tecnicoPorCorreo_(correo);
+    if (tec) {
+      const codigo = String(Math.floor(100000 + Math.random() * 900000));
+      CacheService.getScriptCache().put(claveOtp_(correo), JSON.stringify({ c: codigo, n: 0 }), 600);
+      MailApp.sendEmail({
+        to: correo, subject: '[' + EMPRESA + '] Tu código de acceso: ' + codigo,
+        htmlBody: correoHtml_({
+          titulo: 'Código de acceso: ' + codigo,
+          subtitulo: 'Hola ' + tec['Nombre'] + ', usa este código para entrar a tu panel de casos. Vence en 10 minutos.',
+          pie: 'Si no lo pediste, ignora este correo.'
+        }),
+        body: 'Tu código de acceso al panel de casos es ' + codigo + '. Vence en 10 minutos.'
+      });
+    } else {
+      Utilities.sleep(600);
+    }
+    return { ok: true, mensaje: 'Si el correo está registrado como técnico, te enviamos un código de 6 dígitos.' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// Paso 2: valida el código y entrega una sesión firmada por DIAS_SESION_TECNICO días
+function tecnicoVerificarCodigo(correo, codigo) {
+  try {
+    correo = String(correo || '').trim().toLowerCase();
+    codigo = String(codigo || '').replace(/\D/g, '');
+    const cache = CacheService.getScriptCache(), k = claveOtp_(correo);
+    const guardado = JSON.parse(cache.get(k) || 'null');
+    if (!guardado) throw new Error('El código venció o no existe. Pide uno nuevo.');
+    if (guardado.c !== codigo) {
+      guardado.n++;
+      if (guardado.n >= 5) { cache.remove(k); throw new Error('Demasiados intentos. Pide un código nuevo.'); }
+      cache.put(k, JSON.stringify(guardado), 600);
+      Utilities.sleep(500);
+      throw new Error('Código incorrecto. Te quedan ' + (5 - guardado.n) + ' intentos.');
+    }
+    cache.remove(k);
+    const tec = tecnicoPorCorreo_(correo);
+    if (!tec) throw new Error('Este correo ya no está activo en la hoja TECNICOS.');
+    const base = correo + '|' + (Date.now() + DIAS_SESION_TECNICO * 864e5);
+    return { ok: true, sesion: Utilities.base64EncodeWebSafe(base) + '.' + firma_('tec|' + base), nombre: String(tec['Nombre']) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function sesionTecnico_(sesion) {
+  const partes = String(sesion || '').split('.');
+  if (partes.length !== 2) throw new Error('Sesión no válida. Entra de nuevo.');
+  let base = '';
+  try { base = Utilities.newBlob(Utilities.base64DecodeWebSafe(partes[0])).getDataAsString(); } catch (e) {}
+  if (!base || firma_('tec|' + base) !== partes[1]) throw new Error('Sesión no válida. Entra de nuevo.');
+  const p = base.split('|');
+  if (+p[1] < Date.now()) throw new Error('Tu sesión venció. Entra de nuevo.');
+  const tec = tecnicoPorCorreo_(p[0]);
+  if (!tec) throw new Error('Tu correo ya no está activo como técnico.');
+  return tec;
+}
+
+// Casos asignados al técnico de la sesión, con el token de cada ficha
+function getPanelTecnico(sesion) {
+  try {
+    const tec = sesionTecnico_(sesion);
+    const nombre = String(tec['Nombre']), correo = String(tec['Correo']).trim().toLowerCase();
+    const ahora = Date.now(), limAlerta = HORAS_SIN_RESPUESTA * 36e5;
+    const tickets = leer_('TICKETS').filter(function (t) {
+      return String(t['Técnico asignado'] || '') === nombre;
+    }).reverse().map(function (t) {
+      const est = String(t['Estatus']), abierto = ESTATUS_ABIERTOS.indexOf(est) >= 0;
+      const fecha = ms_(t['Fecha']), lim = ms_(t['Fecha límite SLA']), atencion = ms_(t['Fecha de atencion']);
+      return {
+        id: String(t['ID_Ticket']), t: token_(String(t['ID_Ticket'])), fecha: fmt_(t['Fecha']), fechaMs: fecha,
+        cliente: String(t['Cliente']), contacto: String(t['Contacto']), telefono: String(t['Teléfono']),
+        estado: String(t['Estado']), equipo: String(t['Equipo']), serial: String(t['Serial'] || ''),
+        solicitud: tipoDe_(t), prioridad: String(t['Prioridad']), estatus: est, abierto: abierto,
+        limite: fmt_(t['Fecha límite SLA']), cierre: fmt_(t['Fecha cierre']), cierreMs: ms_(t['Fecha cierre']),
+        vencido: abierto && !!lim && lim < ahora,
+        sinResp: abierto && ESTATUS_SIN_RESPUESTA.indexOf(est) >= 0 && !atencion && !!fecha && ahora - fecha >= limAlerta
+      };
+    });
+    return { ok: true, tecnico: { nombre: nombre, region: String(tec['Región']), correo: correo }, tickets: tickets, diasAlerta: HORAS_SIN_RESPUESTA / 24 };
+  } catch (e) {
+    return { ok: false, error: e.message, sesion: /sesión|Entra de nuevo|activo/i.test(e.message) };
   }
 }
 
