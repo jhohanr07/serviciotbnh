@@ -22,7 +22,8 @@ const EMPRESA = 'BNH Medical';
 const H_TICKETS = ['ID_Ticket', 'Fecha', 'Cliente', 'Contacto', 'Teléfono', 'Correo', 'Estado', 'Región',
   'Equipo', 'Serial', 'Descripción', 'Prioridad', 'Técnico asignado', 'Correo técnico', 'Estatus',
   'Fecha límite SLA', 'Fecha de atencion', 'Observaciones', 'Garantia', 'Fecha cierre',
-  'Atencion en sitio', 'Fecha de la visita', 'Última alerta', 'Solicitud', 'Periféricos', 'Licencia'];
+  'Atencion en sitio', 'Fecha de la visita', 'Última alerta', 'Solicitud', 'Periféricos', 'Licencia',
+  'Cantidad equipos', 'Equipo interno'];
 const H_ESTADOS = ['Estado', 'Región'];
 const H_TECNICOS = ['Nombre', 'Región', 'Correo', 'Activo'];
 
@@ -46,7 +47,8 @@ const TIPO_FALLA = 'Corrección de falla';
 const TIPO_PERIFERICO = 'Instalación de periférico';
 const TIPO_MANTENIMIENTO = 'Mantenimiento preventivo';
 const TIPO_LICENCIA = 'Licencias';
-const TIPOS_SOLICITUD = [TIPO_FALLA, TIPO_PERIFERICO, TIPO_MANTENIMIENTO, TIPO_LICENCIA];
+const TIPO_REVISION = 'Revisión de equipos internos';
+const TIPOS_SOLICITUD = [TIPO_FALLA, TIPO_PERIFERICO, TIPO_MANTENIMIENTO, TIPO_LICENCIA, TIPO_REVISION];
 // Periféricos que se pueden pedir (se puede marcar más de uno)
 const PERIFERICOS = ['Impresora', 'Mico+', 'UltraAssist'];
 // Prioridad que reciben las solicitudes que no son falla (define su fecha límite)
@@ -444,6 +446,8 @@ function crearTicket(d) {
     if (TIPOS_SOLICITUD.indexOf(v.tipo) < 0) return { ok: false, error: 'Elige el tipo de solicitud.', campos: ['tipo'] };
     v.perifericos = '';
     v.licencia = '';
+    v.cantidad = '';
+    v.equipoInterno = '';
     let urg;
     if (v.tipo === TIPO_FALLA) {
       urg = URGENCIAS.filter(function (u) { return u.id === v.urgencia; })[0];
@@ -461,8 +465,15 @@ function crearTicket(d) {
         v.licencia = String(d.licencia || '').trim().slice(0, 200);
         if (!v.licencia) return { ok: false, error: 'Escribe el nombre de la licencia.', campos: ['licencia'] };
       }
+      if (v.tipo === TIPO_REVISION) {
+        const cant = parseInt(String(d.cantidad || '').replace(/\D/g, ''), 10);
+        if (!cant || cant < 1 || cant > 999) return { ok: false, error: 'Indica la cantidad de equipos (entre 1 y 999).', campos: ['cantidad'] };
+        v.cantidad = String(cant);
+        v.equipoInterno = String(d.equipoInterno || '').trim().slice(0, 200);
+        if (!v.equipoInterno) return { ok: false, error: 'Escribe el nombre del equipo.', campos: ['equipoInterno'] };
+      }
       // La descripción guarda un resumen legible para panel, correos y alertas
-      v.descripcion = resumenSolicitud_(v.tipo, v.perifericos, v.licencia, '');
+      v.descripcion = resumenSolicitud_(v.tipo, v.perifericos, v.licencia, '', v.cantidad, v.equipoInterno);
     }
 
     const fe = leer_('ESTADOS').filter(function (e) { return e['Estado'] === v.estado; })[0];
@@ -473,7 +484,7 @@ function crearTicket(d) {
     lock.waitLock(20000);
 
     const shT = hoja_('TICKETS');
-    ['Solicitud', 'Periféricos', 'Licencia'].forEach(function (c) { asegurarColumna_(shT, c); });
+    ['Solicitud', 'Periféricos', 'Licencia', 'Cantidad equipos', 'Equipo interno'].forEach(function (c) { asegurarColumna_(shT, c); });
     const tickets = leer_('TICKETS');
     let max = 0;
     tickets.forEach(function (t) {
@@ -504,7 +515,8 @@ function crearTicket(d) {
       'Equipo': seguro_(v.equipo), 'Serial': texto_(v.serial), 'Descripción': seguro_(v.descripcion),
       'Prioridad': urg.id, 'Técnico asignado': tec ? tec['Nombre'] : '',
       'Correo técnico': tec ? tec['Correo'] : '', 'Estatus': tec ? 'Asignado' : 'Sin asignar',
-      'Fecha límite SLA': limite, 'Solicitud': v.tipo, 'Periféricos': v.perifericos, 'Licencia': seguro_(v.licencia)
+      'Fecha límite SLA': limite, 'Solicitud': v.tipo, 'Periféricos': v.perifericos, 'Licencia': seguro_(v.licencia),
+      'Cantidad equipos': v.cantidad, 'Equipo interno': seguro_(v.equipoInterno)
     });
     SpreadsheetApp.flush();
     lock.releaseLock();
@@ -529,10 +541,11 @@ function appendPorEncabezado_(sh, obj) {
 
 // Texto corto que describe la solicitud (los tickets viejos no tienen tipo: se tratan como falla)
 function tipoDe_(t) { return String(t['Solicitud'] || '').trim() || TIPO_FALLA; }
-function resumenSolicitud_(tipo, perifericos, licencia, descripcion) {
+function resumenSolicitud_(tipo, perifericos, licencia, descripcion, cantidad, equipoInterno) {
   if (tipo === TIPO_PERIFERICO) return 'Instalación de periférico: ' + perifericos;
   if (tipo === TIPO_LICENCIA) return 'Licencia solicitada: ' + licencia;
   if (tipo === TIPO_MANTENIMIENTO) return 'Mantenimiento preventivo del equipo.';
+  if (tipo === TIPO_REVISION) return 'Revisión de equipos internos: ' + cantidad + ' × ' + equipoInterno;
   return String(descripcion || '');
 }
 function tituloBloque_(tipo) { return tipo === TIPO_FALLA ? 'Falla reportada:' : 'Solicitud:'; }
@@ -556,7 +569,8 @@ function consultarTicket(id, correo) {
     const tec = String(t['Técnico asignado'] || '').trim();
     return {
       ok: true, id: id, fecha: fmt_(t['Fecha']), equipo: String(t['Equipo']), serial: String(t['Serial'] || ''),
-      solicitud: tipoDe_(t), detalle: String(t['Periféricos'] || '') || String(t['Licencia'] || ''),
+      solicitud: tipoDe_(t), detalle: String(t['Periféricos'] || '') || String(t['Licencia'] || '') ||
+        (t['Equipo interno'] ? String(t['Cantidad equipos'] || '') + ' × ' + String(t['Equipo interno']) : ''),
       estado: String(t['Estado']), region: String(t['Región']), prioridad: tipoDe_(t) === TIPO_FALLA ? urgencia_(String(t['Prioridad'])).texto.split(':')[0] : '',
       estatus: est, tecnico: tec ? tec.split(/\s+/)[0] : '',
       atencion: fmtDia_(t['Fecha de atencion']), visita: fmtDia_(t['Fecha de la visita']), cierre: fmtDia_(t['Fecha cierre']),
@@ -749,6 +763,7 @@ function getTicketTecnico(id, tk) {
       region: String(t['Región']), equipo: String(t['Equipo']), serial: String(t['Serial']),
       descripcion: String(t['Descripción']), prioridad: String(t['Prioridad']),
       solicitud: tipoDe_(t), perifericos: String(t['Periféricos'] || ''), licencia: String(t['Licencia'] || ''),
+      cantidad: String(t['Cantidad equipos'] || ''), equipoInterno: String(t['Equipo interno'] || ''),
       urgencia: urgencia_(String(t['Prioridad'])).texto,
       tecnico: String(t['Técnico asignado']), estatus: est, limite: fmt_(t['Fecha límite SLA']),
       vencido: ESTATUS_ABIERTOS.indexOf(est) >= 0 && (ms_(t['Fecha límite SLA']) || Infinity) < Date.now(),
@@ -1180,6 +1195,7 @@ function getPanelData(clave) {
         equipo: String(t['Equipo']), serial: String(t['Serial']), descripcion: String(t['Descripción']),
         prioridad: String(t['Prioridad']), tecnico: String(t['Técnico asignado'] || ''), estatus: est,
         solicitud: tipoDe_(t), perifericos: String(t['Periféricos'] || ''), licencia: String(t['Licencia'] || ''),
+      cantidad: String(t['Cantidad equipos'] || ''), equipoInterno: String(t['Equipo interno'] || ''),
         limite: fmt_(t['Fecha límite SLA']), cierre: fmt_(t['Fecha cierre']), obs: String(t['Observaciones'] || ''),
         atencion: fmt_(t['Fecha de atencion']), sitio: String(t['Atencion en sitio'] || ''),
         visita: fmt_(t['Fecha de la visita']), garantia: String(t['Garantia'] || ''), alerta: fmt_(t[COL_ALERTA]),
