@@ -164,6 +164,21 @@
           <input id="licencia" maxlength="200" autocomplete="off" placeholder="Ej.: licencia de elastografía…" aria-describedby="licenciaErr">
           <div class="ferr" id="licenciaErr"></div>
         </div>
+
+        <div class="cond" id="bRev" hidden>
+          <div class="grid2">
+            <div class="field">
+              <label for="cantidad">Cantidad <span class="req" aria-hidden="true">*</span></label>
+              <input id="cantidad" type="number" inputmode="numeric" min="1" max="999" step="1" placeholder="Ej.: 3" aria-describedby="cantidadErr">
+              <div class="ferr" id="cantidadErr"></div>
+            </div>
+            <div class="field">
+              <label for="equipoInterno">Nombre del equipo <span class="req" aria-hidden="true">*</span></label>
+              <input id="equipoInterno" maxlength="200" autocomplete="off" placeholder="Ej.: Monitor de signos vitales…" aria-describedby="equipoInternoErr">
+              <div class="ferr" id="equipoInternoErr"></div>
+            </div>
+          </div>
+        </div>
       </fieldset>
 
       <div class="hp" aria-hidden="true"><label for="web">No llenar</label><input id="web" tabindex="-1" autocomplete="off"></div>
@@ -307,16 +322,16 @@
   /* ---------------- FORMULARIO ---------------- */
   let SEL = { ref: '', telReg: false, correoReg: false }, EQ = [], timerBus = null, nBus = 0, idxSug = -1;
   const ETIQ_ESTADO = e => e === 'Distrito Capital' ? 'Distrito Capital (Caracas)' : e;
-  const CAMPOS = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo', 'tipo', 'urgencias', 'descripcion', 'perifericos', 'licencia'];
-  const TIPOS_DEF = ['Corrección de falla', 'Instalación de periférico', 'Mantenimiento preventivo', 'Licencias'];
+  const CAMPOS = ['cliente', 'contacto', 'telefono', 'correo', 'estado', 'equipo', 'tipo', 'urgencias', 'descripcion', 'perifericos', 'licencia', 'cantidad', 'equipoInterno'];
+  const TIPOS_DEF = ['Corrección de falla', 'Instalación de periférico', 'Mantenimiento preventivo', 'Licencias', 'Revisión de equipos internos'];
   const PERIF_DEF = ['Impresora', 'Mico+', 'UltraAssist'];
   // Tipo de solicitud -> bloque que se muestra
-  const BLOQUE = { 'Corrección de falla': 'bFalla', 'Instalación de periférico': 'bPerif', 'Mantenimiento preventivo': 'bMant', 'Licencias': 'bLic' };
+  const BLOQUE = { 'Corrección de falla': 'bFalla', 'Instalación de periférico': 'bPerif', 'Mantenimiento preventivo': 'bMant', 'Licencias': 'bLic', 'Revisión de equipos internos': 'bRev' };
 
   function mostrarBloque() {
     const t = $('tipo').value;
-    ['bFalla', 'bPerif', 'bMant', 'bLic'].forEach(id => $(id).hidden = BLOQUE[t] !== id);
-    ['urgencias', 'descripcion', 'perifericos', 'licencia'].forEach(c => setErr(c, ''));
+    ['bFalla', 'bPerif', 'bMant', 'bLic', 'bRev'].forEach(id => $(id).hidden = BLOQUE[t] !== id);
+    ['urgencias', 'descripcion', 'perifericos', 'licencia', 'cantidad', 'equipoInterno'].forEach(c => setErr(c, ''));
     $('btnEnviar').textContent = t === 'Corrección de falla' ? 'Enviar reporte' : 'Enviar solicitud';
   }
 
@@ -369,7 +384,7 @@
     $('cliente').addEventListener('blur', () => setTimeout(cerrarSug, 120));
 
     $('tipo').addEventListener('change', () => { setErr('tipo', ''); mostrarBloque(); });
-    ['contacto', 'telefono', 'correo', 'estado', 'descripcion', 'equipoMan', 'licencia'].forEach(id =>
+    ['contacto', 'telefono', 'correo', 'estado', 'descripcion', 'equipoMan', 'licencia', 'cantidad', 'equipoInterno'].forEach(id =>
       $(id).addEventListener('input', () => setErr(id === 'equipoMan' ? 'equipo' : id, '')));
     $('descripcion').addEventListener('input', () => $('descCount').textContent = $('descripcion').value.length + '/1500');
     $('descripcion').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('frm').requestSubmit(); });
@@ -390,7 +405,7 @@
     $('btnOtro').onclick = () => {
       $('descripcion').value = ''; $('descCount').textContent = '0/1500';
       document.querySelectorAll('input[name="urgencia"], input[name="periferico"]').forEach(r => r.checked = false);
-      $('tipo').value = ''; $('licencia').value = ''; mostrarBloque();
+      $('tipo').value = ''; $('licencia').value = ''; $('cantidad').value = ''; $('equipoInterno').value = ''; mostrarBloque();
       pintarEquipos(); limpiarErrores();
       $('doneBox').hidden = true; $('formBox').hidden = false;
       (EQ.length ? $('equipoSel') : $('equipoMan')).focus();
@@ -416,6 +431,11 @@
     }
     if (d.tipo === 'Instalación de periférico' && !d.perifericos.length) e.perifericos = 'Marca al menos un periférico.';
     if (d.tipo === 'Licencias' && !d.licencia.trim()) e.licencia = 'Escribe el nombre de la licencia.';
+    if (d.tipo === 'Revisión de equipos internos') {
+      const n = parseInt(d.cantidad, 10);
+      if (!n || n < 1 || n > 999) e.cantidad = 'Indica cuántos equipos (1 a 999).';
+      if (!d.equipoInterno.trim()) e.equipoInterno = 'Escribe el nombre del equipo.';
+    }
     return e;
   }
 
@@ -436,10 +456,13 @@
     const u = document.querySelector('input[name="urgencia"]:checked'); d.urgencia = u ? u.value : '';
     d.perifericos = Array.from(document.querySelectorAll('input[name="periferico"]:checked')).map(x => x.value);
     d.licencia = $('licencia').value;
+    d.cantidad = $('cantidad').value;
+    d.equipoInterno = $('equipoInterno').value;
     // Solo se envían los datos del tipo elegido
     if (d.tipo !== 'Corrección de falla') { d.urgencia = ''; d.descripcion = ''; }
     if (d.tipo !== 'Instalación de periférico') d.perifericos = [];
     if (d.tipo !== 'Licencias') d.licencia = '';
+    if (d.tipo !== 'Revisión de equipos internos') { d.cantidad = ''; d.equipoInterno = ''; }
 
     const errs = validar(d), ids = CAMPOS.filter(c => errs[c]);
     if (ids.length) {
@@ -700,7 +723,7 @@
     $('dTitulo').textContent = 'Ticket ' + a.id;
     $('dSub').innerHTML = badge(a.estatus) + '<span class="' + clsPri(a.prioridad) + '">' + esc(a.prioridad) + '</span>' +
       (a.vencido ? '<span class="venc">SLA vencido</span>' : '') + '<span class="meta" style="color:var(--muted);font-size:13px">' + esc(a.fecha) + '</span>';
-    const filas = [['Solicitud', a.solicitud], ['Periféricos', a.perifericos], ['Licencia', a.licencia], ['Cliente', a.cliente], ['Contacto', a.contacto], ['Teléfono', a.telefono], ['Correo', a.correo],
+    const filas = [['Solicitud', a.solicitud], ['Periféricos', a.perifericos], ['Licencia', a.licencia], ['Cantidad', a.cantidad], ['Equipo a revisar', a.equipoInterno], ['Cliente', a.cliente], ['Contacto', a.contacto], ['Teléfono', a.telefono], ['Correo', a.correo],
       ['Equipo', a.equipo + (a.serial ? ' · S/N ' + a.serial : '')], ['Ubicación', a.estado + ' · Región ' + a.region],
       ['Límite SLA', a.limite], ['Atención', a.atencion], ['Visita', a.visita], ['Garantía', a.garantia], ['En sitio', a.sitio],
       ['Último aviso', a.alerta]].filter(f => f[1]);
