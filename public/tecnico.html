@@ -146,7 +146,7 @@
     if (/^[24]\d{9}$/.test(tel)) tel = '0' + tel;
     const w = wa(t.telefono);
     const falla = !t.solicitud || t.solicitud === 'Corrección de falla';
-    const filas = [['Solicitud', t.solicitud], ['Periféricos', t.perifericos], ['Licencia', t.licencia], ['Cliente', t.cliente], ['Contacto', t.contacto], ['Equipo', t.equipo + (t.serial ? ' · S/N ' + t.serial : '')],
+    const filas = [['Solicitud', t.solicitud], ['Periféricos', t.perifericos], ['Licencia', t.licencia], ['Cantidad', t.cantidad], ['Equipo a revisar', t.equipoInterno], ['Cliente', t.cliente], ['Contacto', t.contacto], ['Equipo', t.equipo + (t.serial ? ' · S/N ' + t.serial : '')],
       ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', falla ? t.urgencia : ''], ['Reportado', t.fecha], ['Límite', t.limite]].filter(f => f[1]);
     $('info').innerHTML =
       '<div class="contact">' +
