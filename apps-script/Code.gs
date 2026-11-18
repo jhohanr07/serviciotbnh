@@ -1304,6 +1304,7 @@ function getDashboardData(clave) {
         respDias: fecha && atencion ? Math.max(0, diaN_(atencion) - diaN_(fecha)) : null,
         cierre: ms_(t['Fecha cierre']), visita: ms_(t['Fecha de la visita']),
         garantia: String(t['Garantia'] || '').trim(), sitio: String(t['Atencion en sitio'] || '').trim(),
+        obs: String(t['Observaciones'] || '').trim(),
         alerta: ms_(t[COL_ALERTA])
       };
     });
