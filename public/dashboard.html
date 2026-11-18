@@ -468,6 +468,9 @@
         f: t => t.abierto ? (t.sinResp ? '<span class="venc">' + fDur(t.edad) + '</span><small>sin respuesta</small>' : fDur(t.edad))
           : fDur(t.dur) + '<small>hasta el cierre</small>' },
       { k: 'respDias', t: 'Respuesta', num: 1, f: t => t.respDias != null ? fDias(t.respDias) + '<small>' + fFecha(t.atencion) + '</small>' : '—' },
+      { k: 'obs', t: 'Observaciones del técnico', v: t => t.obs, f: t => t.obs
+        ? '<div data-tip="' + esc(t.obs) + '" style="min-width:220px;max-width:340px;white-space:normal">' + esc(t.obs.length > 160 ? t.obs.slice(0, 160) + '…' : t.obs) + '</div>'
+        : '<span style="color:var(--muted)">—</span>' },
       { k: 'gar', t: 'Garantía', v: t => t.garantia, f: t => esc(t.garantia || '—') },
       { k: 'enSitio', t: 'En sitio', v: t => t.enSitio ? 1 : 0, f: t => t.enSitio ? 'Sí' + (t.visita ? '<small>visita ' + fFecha(t.visita) + '</small>' : '') + (t.sitio ? '<small>' + esc(t.sitio.slice(0, 80)) + '</small>' : '') : 'No' }
     ], casosVisibles(rows), SORT.casos, 'No hay casos en esta vista.');
@@ -480,7 +483,7 @@
     const cols = [['Ticket', t => t.id], ['Fecha', t => fFecha(t.fecha)], ['Cliente', t => t.cliente], ['Estado', t => t.estado], ['Región', t => t.region],
       ['Equipo', t => t.equipo], ['Serial', t => t.serial], ['Solicitud', t => t.solicitud], ['Técnico', t => t.tecnico], ['Prioridad', t => t.prioridad], ['Estatus', t => t.estatus],
       ['Atención', t => fFecha(t.atencion)], ['Cierre', t => fFecha(t.cierre)], ['Respuesta (días)', t => t.respDias == null ? '' : t.respDias],
-      ['Garantía', t => t.garantia], ['En sitio', t => t.enSitio ? 'Sí' : 'No'], ['SLA vencido', t => t.vencido ? 'Sí' : 'No']];
+      ['Observaciones', t => t.obs], ['Garantía', t => t.garantia], ['En sitio', t => t.enSitio ? 'Sí' : 'No'], ['SLA vencido', t => t.vencido ? 'Sí' : 'No']];
     const q = v => { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     const csv = '﻿' + [cols.map(c => c[0]).join(';')].concat(rows.map(r => cols.map(c => q(c[1](r))).join(';'))).join('\n');
     const a = document.createElement('a');
