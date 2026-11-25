@@ -16,7 +16,7 @@ const PERMITIDAS = new Set([
   'getFormConfig', 'calentarDatos', 'buscarClientes', 'seleccionarCliente', 'crearTicket', 'consultarTicket',
   'getTicketTecnico', 'guardarTicketTecnico',
   'panelLogin', 'getPanelData', 'actualizarTicket', 'reenviarTecnico', 'getDashboardData', 'enviarAlertasAhora',
-  'tecnicoSolicitarCodigo', 'tecnicoVerificarCodigo', 'getPanelTecnico',
+  'tecnicoSolicitarCodigo', 'tecnicoVerificarCodigo', 'getPanelTecnico','solicitarAprobacion', 'aprobarDesdeDashboard',
   'ping'
 ]);
 
