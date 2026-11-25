@@ -25,6 +25,7 @@
   .dirty { font-size: 13px; color: var(--muted); }
   .dirty.on { color: var(--warn); font-weight: 600; }
   .ro input, .ro select, .ro textarea { background: var(--track); }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -48,6 +49,7 @@
 
   <form id="frm" class="card" hidden novalidate>
     <div id="roMsg" class="msg info" hidden style="margin-top:0;margin-bottom:8px">Coordinación cerró este ticket. Solo puedes consultarlo.</div>
+
     <fieldset>
       <legend><span class="num" aria-hidden="true">1</span>Atención</legend>
       <div class="field">
@@ -60,12 +62,14 @@
         <div class="field">
           <label for="fechaAtencion">Fecha de atención</label>
           <input id="fechaAtencion" type="date" aria-describedby="fechaAtencionHint fechaAtencionErr">
-          <div class="hint" id="fechaAtencionHint">Día en que respondiste o contactaste al cliente.</div><div class="ferr" id="fechaAtencionErr"></div>
+          <div class="hint" id="fechaAtencionHint">Día en que respondiste o contactaste al cliente.</div>
+          <div class="ferr" id="fechaAtencionErr"></div>
         </div>
         <div class="field">
           <label for="estatus">Situación del caso</label>
           <select id="estatus" aria-describedby="estatusHint estatusErr"></select>
-          <div class="hint" id="estatusHint">Disponible al registrar la atención.</div><div class="ferr" id="estatusErr"></div>
+          <div class="hint" id="estatusHint">Disponible al registrar la atención.</div>
+          <div class="ferr" id="estatusErr"></div>
         </div>
       </div>
     </fieldset>
@@ -83,12 +87,37 @@
       </div>
       <div class="grid2">
         <div class="field">
+          <label for="sustitucion">Sustitución</label>
+          <select id="sustitucion" aria-describedby="sustitucionErr">
+            <option value="">Ninguna</option>
+            <option>Cambio de pieza</option>
+            <option>Cambio de equipo</option>
+          </select>
+          <div class="ferr" id="sustitucionErr"></div>
+        </div>
+        <div class="field" id="boxSust" hidden>
+          <label for="sustDetalle" id="lblSust">¿Cuál?</label>
+          <input id="sustDetalle" type="text" maxlength="300" placeholder="Ej.: Transductor convexo" aria-describedby="sustDetalleErr">
+          <div class="ferr" id="sustDetalleErr"></div>
+        </div>
+      </div>
+      <div class="field" id="boxAprob" hidden>
+        <div class="msg info" id="aprobEstado" style="margin:0 0 8px"></div>
+        <button class="btn ghost" id="btnAprob" type="button">Solicitar aprobación</button>
+      </div>
+      <div class="grid2">
+        <div class="field">
           <label for="fechaVisita">Fecha de la visita</label>
-          <input id="fechaVisita" type="date" aria-describedby="fechaVisitaErr"><div class="ferr" id="fechaVisitaErr"></div>
+          <input id="fechaVisita" type="date" aria-describedby="fechaVisitaErr">
+          <div class="ferr" id="fechaVisitaErr"></div>
         </div>
         <div class="field">
           <label for="garantia">¿Entra por garantía?</label>
-          <select id="garantia" aria-describedby="garantiaErr"><option value="">Selecciona…</option><option>Sí</option><option>No</option></select>
+          <select id="garantia" aria-describedby="garantiaErr">
+            <option value="">Selecciona…</option>
+            <option>Sí</option>
+            <option>No</option>
+          </select>
           <div class="ferr" id="garantiaErr"></div>
         </div>
       </div>
@@ -119,7 +148,7 @@
   const ID = /^TK-\d+$/.test(QS.get('id') || '') ? QS.get('id') : '';
   const TK = /^[0-9a-f]{32}$/.test(QS.get('t') || '') ? QS.get('t') : '';
   if (ID) document.title = 'Ticket ' + ID + ' · BNH Medical';
-  const CAMPOS = ['prioridad', 'fechaAtencion', 'estatus', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'];
+  const CAMPOS = ['prioridad', 'fechaAtencion', 'estatus', 'obs', 'sitio', 'sustitucion', 'sustDetalle', 'fechaVisita', 'garantia', 'fechaCierre'];
   let T = null, ORIGINAL = '', SUCIO = false;
 
   function err(m) { $('msgErr').textContent = m; $('msgErr').hidden = false; }
@@ -139,15 +168,20 @@
 
   function pintarInfo(t) {
     $('eyebrow').textContent = 'Prioridad ' + t.prioridad + (t.vencido ? ' · SLA vencido' : '');
-    $('eyebrow').style.color = t.vencido || t.prioridad === 'P1' ? 'var(--bad)' : '';
+    $('eyebrow').style.color = (t.vencido || t.prioridad === 'P1') ? 'var(--bad)' : '';
     $('titulo').textContent = 'Ticket ' + t.id;
     $('estBadge').innerHTML = badge(t.estatus);
-    let tel = String(t.telefono).replace(/[^\d+]/g, '');
+    let tel = String(t.telefono || '').replace(/[^\d+]/g, '');
     if (/^[24]\d{9}$/.test(tel)) tel = '0' + tel;
     const w = wa(t.telefono);
     const falla = !t.solicitud || t.solicitud === 'Corrección de falla';
-    const filas = [['Solicitud', t.solicitud], ['Periféricos', t.perifericos], ['Licencia', t.licencia], ['Cantidad', t.cantidad], ['Equipo a revisar', t.equipoInterno], ['Cliente', t.cliente], ['Contacto', t.contacto], ['Equipo', t.equipo + (t.serial ? ' · S/N ' + t.serial : '')],
-      ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', falla ? t.urgencia : ''], ['Reportado', t.fecha], ['Límite', t.limite]].filter(f => f[1]);
+    const filas = [
+      ['Solicitud', t.solicitud], ['Periféricos', t.perifericos], ['Licencia', t.licencia], ['Cantidad', t.cantidad],
+      ['Equipo a revisar', t.equipoInterno], ['Cliente', t.cliente], ['Contacto', t.contacto],
+      ['Equipo', textoEquipo(t)],
+      ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', falla ? t.urgencia : ''],
+      ['Reportado', t.fecha], ['Límite', t.limite]
+    ].filter(f => f[1]);
     $('info').innerHTML =
       '<div class="contact">' +
       (tel ? '<a class="btn ghost" href="tel:' + esc(tel) + '">Llamar</a>' : '') +
@@ -166,6 +200,50 @@
     $('fechaCierre').min = at || T.fechaReporte;
   }
 
+  function textoEquipo(t) { t = t || T; return (t.equipo || '') + (t.serial ? ' · S/N ' + t.serial : ''); }
+
+  function reglasSust() {
+    const s = $('sustitucion').value, auto = textoEquipo();
+    const lock = T.aprobacion === 'Aprobada' || !T.editable;
+    $('boxSust').hidden = !s; $('boxAprob').hidden = !s;
+    if (s === 'Cambio de equipo') {
+      $('sustDetalle').value = auto; $('sustDetalle').readOnly = true;
+      $('lblSust').textContent = 'Equipo a sustituir (el reportado)';
+    } else {
+      if (!lock && (!s || $('sustDetalle').value === auto)) $('sustDetalle').value = '';
+      $('sustDetalle').readOnly = false; $('lblSust').textContent = '¿Cuál?';
+    }
+    $('sustitucion').disabled = lock; $('sustDetalle').disabled = lock;
+    pintarAprob();
+  }
+
+  function pintarAprob() {
+    const a = T.aprobacion;
+    $('aprobEstado').textContent = a === 'Aprobada' ? '✔ Aprobada el ' + (T.fechaAprobacion || '') + '. Coordinación ya avisó para la entrega.'
+      : a === 'Pendiente' ? 'Aprobación pendiente (solicitada ' + (T.fechaSolicitud || '') + ').'
+      : 'Aún no has solicitado aprobación para esta sustitución.';
+    $('btnAprob').disabled = a === 'Aprobada' || !T.editable;
+    $('btnAprob').textContent = a === 'Pendiente' ? 'Reenviar solicitud' : 'Solicitar aprobación';
+  }
+
+  async function solicitar() {
+    if (!T || !T.editable) return;
+    ['sustitucion', 'sustDetalle'].forEach(k => setErr(k, ''));
+    const d = { sustitucion: $('sustitucion').value, sustDetalle: $('sustDetalle').value };
+    if (!d.sustitucion) { setErr('sustitucion', 'Elige el tipo de sustitución.'); return $('sustitucion').focus(); }
+    if (d.sustitucion === 'Cambio de pieza' && !d.sustDetalle.trim()) { setErr('sustDetalle', 'Indica cuál pieza.'); return $('sustDetalle').focus(); }
+    ocupado($('btnAprob'), true, 'Enviando…');
+    try {
+      const r = await api('solicitarAprobacion', ID, TK, d);
+      if (!r.ok) { if (r.campo) setErr(r.campo, r.error); throw new Error(r.error); }
+      T.aprobacion = 'Pendiente'; T.fechaSolicitud = r.fecha;
+      aviso('Solicitud enviada a Atención Técnica.');
+    } catch (ex) { aviso(ex.message, 'err'); }
+    ocupado($('btnAprob'), false);
+    pintarAprob();
+  }
+  $('btnAprob').onclick = solicitar;
+
   function marcarSucio() {
     SUCIO = JSON.stringify(valores()) !== ORIGINAL;
     $('dirty').textContent = SUCIO ? 'Cambios sin guardar' : 'Sin cambios';
@@ -173,7 +251,10 @@
   }
 
   (async function () {
-    if (!ID || !TK) { $('titulo').textContent = 'Enlace no válido'; $('cargando').hidden = true; $('eyebrow').textContent = ''; return err('Abre el ticket desde el botón del correo.'); }
+    if (!ID || !TK) {
+      $('titulo').textContent = 'Enlace no válido'; $('cargando').hidden = true; $('eyebrow').textContent = '';
+      return err('Abre el ticket desde el botón del correo.');
+    }
     try {
       const t = await api('getTicketTecnico', ID, TK);
       if (!t.ok) throw new Error(t.error);
@@ -182,7 +263,7 @@
       $('prioridad').value = t.prioridad;
       $('estatus').innerHTML = t.estatusTecnico.map(s => '<option>' + esc(s) + '</option>').join('');
       $('estatus').value = t.estatusTecnico.indexOf(t.estatus) >= 0 ? t.estatus : t.estatusTecnico[0];
-      ['fechaAtencion', 'obs', 'sitio', 'fechaVisita', 'garantia', 'fechaCierre'].forEach(k => $(k).value = t[k] || '');
+      ['fechaAtencion', 'obs', 'sitio', 'sustitucion', 'sustDetalle', 'fechaVisita', 'garantia', 'fechaCierre'].forEach(k => $(k).value = t[k] || '');
       ['fechaAtencion', 'fechaCierre'].forEach(k => { $(k).max = t.hoy; $(k).min = t.fechaReporte; });
       $('fechaVisita').min = t.fechaReporte;
       if (!t.editable) {
@@ -190,18 +271,27 @@
         CAMPOS.forEach(k => $(k).disabled = true);
       } else {
         $('savebar').hidden = false;
-        CAMPOS.forEach(k => $(k).addEventListener('input', () => { setErr(k, ''); reglas(); marcarSucio(); }));
+        CAMPOS.forEach(k => $(k).addEventListener('input', () => {
+          setErr(k, ''); reglas();
+          if (k === 'sustitucion') reglasSust();
+          marcarSucio();
+        }));
         $('frm').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) guardar(); });
       }
       $('frm').hidden = false;
       reglas();
+      reglasSust();
       ORIGINAL = JSON.stringify(valores());
-    } catch (e) { $('titulo').textContent = 'No se pudo abrir el ticket'; $('eyebrow').textContent = ''; $('cargando').hidden = true; err(e.message); }
+    } catch (e) {
+      $('titulo').textContent = 'No se pudo abrir el ticket'; $('eyebrow').textContent = ''; $('cargando').hidden = true;
+      err(e.message);
+    }
   })();
 
   function validar(d) {
     const e = {};
     if (d.fechaAtencion && d.fechaAtencion > T.hoy) e.fechaAtencion = 'No puede ser una fecha futura.';
+    if (d.sustitucion === 'Cambio de pieza' && !d.sustDetalle.trim()) e.sustDetalle = 'Indica cuál pieza.';
     if (d.fechaCierre) {
       if (d.fechaCierre > T.hoy) e.fechaCierre = 'No puede ser una fecha futura.';
       if (!d.fechaAtencion) e.fechaAtencion = 'Para cerrar, registra la fecha de atención.';
