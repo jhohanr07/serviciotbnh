@@ -19,13 +19,22 @@
 const TZ = 'America/Caracas';
 const EMPRESA = 'BNH Medical';
 
+const H_ESTADOS = ['Estado', 'Región'];
+const H_TECNICOS = ['Nombre', 'Región', 'Correo', 'Activo'];
+
 const H_TICKETS = ['ID_Ticket', 'Fecha', 'Cliente', 'Contacto', 'Teléfono', 'Correo', 'Estado', 'Región',
   'Equipo', 'Serial', 'Descripción', 'Prioridad', 'Técnico asignado', 'Correo técnico', 'Estatus',
   'Fecha límite SLA', 'Fecha de atencion', 'Observaciones', 'Garantia', 'Fecha cierre',
   'Atencion en sitio', 'Fecha de la visita', 'Última alerta', 'Solicitud', 'Periféricos', 'Licencia',
-  'Cantidad equipos', 'Equipo interno'];
-const H_ESTADOS = ['Estado', 'Región'];
-const H_TECNICOS = ['Nombre', 'Región', 'Correo', 'Activo'];
+  'Cantidad equipos', 'Equipo interno',
+  'Sustitución', 'Detalle sustitución', 'Aprobación', 'Fecha solicitud aprobación', 'Fecha aprobación', 'Aprobado por'];
+
+const SUST_PIEZA = 'Cambio de pieza';
+const SUST_EQUIPO = 'Cambio de equipo';
+const SUSTITUCIONES = [SUST_PIEZA, SUST_EQUIPO];
+const CORREO_APROBACIONES = 'atenciontecnica@bnhmedical.com';
+const CORREO_ENTREGA = 'Viviana Hidalgo <viviana.h@bnhmedical.com>';
+const COLS_SUST = ['Sustitución', 'Detalle sustitución', 'Aprobación', 'Fecha solicitud aprobación', 'Fecha aprobación', 'Aprobado por'];
 
 const REGIONES = ['Central', 'Occidente', 'Oriente'];
 const ESTATUS = ['Sin asignar', 'Asignado', 'En reparación', 'Esperando repuesto', 'Resuelto', 'Cerrado'];
@@ -86,6 +95,8 @@ function apiPermitida_(fn) {
     reenviarTecnico: reenviarTecnico, getDashboardData: getDashboardData, enviarAlertasAhora: enviarAlertasAhora,
     tecnicoSolicitarCodigo: tecnicoSolicitarCodigo, tecnicoVerificarCodigo: tecnicoVerificarCodigo,
     getPanelTecnico: getPanelTecnico,
+    solicitarAprobacion: solicitarAprobacion,
+    aprobarDesdeDashboard: aprobarDesdeDashboard,
     ping: function () { return { ok: true, empresa: EMPRESA, hora: fmt_(new Date()) }; }
   }[fn] || null;
 }
@@ -143,6 +154,7 @@ function enlace_(ruta, params) {
 
 // Los correos viejos apuntaban a la URL /exec. Esto los manda a la misma vista en Vercel.
 function doGet(e) {
+  if (String((e && e.parameter && e.parameter.accion) || '') === 'aprobar') return paginaAprobacion_(e.parameter);
   const p = (e && e.parameter) || {};
   const base = urlApp_();
   if (!base) {
@@ -772,6 +784,9 @@ function getTicketTecnico(id, tk) {
       garantia: String(t['Garantia'] || ''), fechaCierre: fechaInput_(t['Fecha cierre']),
       fechaReporte: fechaInput_(t['Fecha']), hoy: fechaInput_(new Date()),
       editable: est !== 'Cerrado', estatusTecnico: ESTATUS_TECNICO,
+      sustitucion: String(t['Sustitución'] || ''), sustDetalle: String(t['Detalle sustitución'] || ''),
+      aprobacion: String(t['Aprobación'] || ''), fechaSolicitud: fmt_(t['Fecha solicitud aprobación']),
+      fechaAprobacion: fmt_(t['Fecha aprobación']),
       urgencias: URGENCIAS.map(function (u) { return { id: u.id, texto: u.texto, horas: u.horas }; })
     };
   } catch (e) {
@@ -814,6 +829,11 @@ function guardarTicketTecnico(id, tk, d) {
     const antes = String(t['Estatus']);
     if (antes === 'Cerrado') throw new Error('Coordinación ya cerró este ticket; no se puede modificar.');
     const fRep = aFecha_(t['Fecha']);
+    const s = sustitucionDatos_(t, d.sustitucion, d.sustDetalle);
+    const aprobActual = String(t['Aprobación'] || '');
+    const cambioSust = s.sust !== String(t['Sustitución'] || '') || s.detalle !== String(t['Detalle sustitución'] || '');
+    if (aprobActual === 'Aprobada' && cambioSust) err('La sustitución ya fue aprobada y no se puede modificar.', 'sustitucion');
+      COLS_SUST.forEach(function (c) { asegurarColumna_(hoja_('TICKETS'), c); });
     if (fAtencion && fRep && diaN_(fAtencion) < diaN_(fRep)) err('La atención no puede ser anterior al reporte (' + fmtDia_(fRep) + ').', 'fechaAtencion');
 
     // Estatus automático según lo que llene el técnico
@@ -825,7 +845,8 @@ function guardarTicketTecnico(id, tk, d) {
     const sh = hoja_('TICKETS');
     const cambios = {
       'Fecha de atencion': fAtencion, 'Observaciones': seguro_(obs), 'Atencion en sitio': seguro_(sitio),
-      'Fecha de la visita': fVisita, 'Garantia': garantia, 'Fecha cierre': fCierre, 'Estatus': est
+      'Fecha de la visita': fVisita, 'Garantia': garantia, 'Fecha cierre': fCierre, 'Estatus': est,
+      'Sustitución': s.sust, 'Detalle sustitución': seguro_(s.detalle)
     };
     // Si el técnico corrige la urgencia, la fecha límite se recalcula desde el reporte
     let limite = aFecha_(t['Fecha límite SLA']);
@@ -833,6 +854,9 @@ function guardarTicketTecnico(id, tk, d) {
       cambios['Prioridad'] = prioridad;
       if (fRep) { limite = new Date(fRep.getTime() + urgencia_(prioridad).horas * 3600000); cambios['Fecha límite SLA'] = limite; }
     }
+
+    if (cambioSust && aprobActual === 'Pendiente') cambios['Aprobación'] = '';
+
     escribir_(sh, t._fila, cambios);
     SpreadsheetApp.flush();
     lock.releaseLock();
@@ -1300,6 +1324,9 @@ function getDashboardData(clave) {
         estado: String(t['Estado']), region: String(t['Región']), prioridad: String(t['Prioridad']),
         tecnico: String(t['Técnico asignado'] || ''), estatus: String(t['Estatus']), solicitud: tipoDe_(t),
         limite: ms_(t['Fecha límite SLA']), atencion: atencion ? atencion.getTime() : null,
+        sustitucion: String(t['Sustitución'] || ''), sustDetalle: String(t['Detalle sustitución'] || ''),
+        aprobacion: String(t['Aprobación'] || ''), solicitudAprob: ms_(t['Fecha solicitud aprobación']),
+        fechaAprob: ms_(t['Fecha aprobación']), aprobadoPor: String(t['Aprobado por'] || ''),
         // Días calendario entre el reporte y la fecha de atención (0 = el mismo día)
         respDias: fecha && atencion ? Math.max(0, diaN_(atencion) - diaN_(fecha)) : null,
         cierre: ms_(t['Fecha cierre']), visita: ms_(t['Fecha de la visita']),
@@ -1453,4 +1480,176 @@ function enviarAlerta_(t, dias, tecnico, correoTec, admin) {
     return true;
   }
   return false;
+}
+/* ===================== SUSTITUCIÓN Y APROBACIÓN ===================== */
+
+function errCampo_(msg, campo) { const e = new Error(msg); e.campo = campo; return e; }
+
+// Valida la sustitución. Cambio de equipo = el equipo reportado, automático.
+function sustitucionDatos_(t, sust, detalle) {
+  sust = String(sust || '').trim();
+  detalle = String(detalle || '').trim().slice(0, 300);
+  if (!sust) return { sust: '', detalle: '' };
+  if (SUSTITUCIONES.indexOf(sust) < 0) throw errCampo_('Sustitución no válida.', 'sustitucion');
+  if (sust === SUST_EQUIPO) {
+    return { sust: sust, detalle: String(t['Equipo']) + (t['Serial'] ? ' · S/N ' + t['Serial'] : '') };
+  }
+  if (!detalle) throw errCampo_('Indica cuál pieza se debe cambiar.', 'sustDetalle');
+  return { sust: sust, detalle: detalle };
+}
+
+function tokenAprob_(id) { return firma_('aprob|' + id).slice(0, 32); }
+
+function enlaceAprobacion_(id) {
+  return ScriptApp.getService().getUrl() + '?accion=aprobar&id=' + encodeURIComponent(id) + '&k=' + tokenAprob_(id);
+}
+
+// El técnico pulsa "Solicitar aprobación"
+function solicitarAprobacion(id, tk, d) {
+  let lock = null;
+  try {
+    if (!tokenValido_(id, tk)) throw new Error('Enlace no válido. Ábrelo desde el botón del correo más reciente.');
+    d = d || {};
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    const t = buscarTicket_(id);
+    if (String(t['Estatus']) === 'Cerrado') throw new Error('Este ticket ya está cerrado.');
+    if (String(t['Aprobación'] || '') === 'Aprobada') throw new Error('Esta sustitución ya fue aprobada.');
+    const s = sustitucionDatos_(t, d.sustitucion, d.sustDetalle);
+    if (!s.sust) throw errCampo_('Elige el tipo de sustitución.', 'sustitucion');
+
+    const sh = hoja_('TICKETS');
+    COLS_SUST.forEach(function (c) { asegurarColumna_(sh, c); });
+    const ahora = new Date();
+    escribir_(sh, t._fila, {
+      'Sustitución': s.sust, 'Detalle sustitución': seguro_(s.detalle),
+      'Aprobación': 'Pendiente', 'Fecha solicitud aprobación': ahora, 'Fecha aprobación': '', 'Aprobado por': ''
+    });
+    SpreadsheetApp.flush();
+    lock.releaseLock();
+    lock = null;
+
+    const c = datosCorreo_(t);
+    MailApp.sendEmail({
+      to: CORREO_APROBACIONES,
+      subject: '[' + EMPRESA + '] Solicitud de aprobación: ' + s.sust + ' · ticket ' + c.id,
+      htmlBody: correoHtml_({
+        color: '#b26a00', titulo: 'Solicitud de aprobación · ' + c.id,
+        subtitulo: String(t['Técnico asignado'] || 'El técnico') + ' solicita autorizar una sustitución.',
+        filas: [['Requerimiento', s.sust], [s.sust === SUST_PIEZA ? 'Pieza' : 'Equipo', s.detalle],
+          ['Técnico', t['Técnico asignado']], ['Cliente', c.cliente], ['Contacto', c.contacto + ' / ' + c.telefono],
+          ['Ubicación', c.estado + ' (Región ' + c.region + ')'],
+          ['Equipo reportado', c.equipo + (c.serial ? ' (serial ' + c.serial + ')' : '')],
+          ['Solicitud', c.tipo], ['Prioridad', c.prioridad + ' - ' + c.urgTexto],
+          ['Reportado', fmt_(t['Fecha'])], ['Fecha de atención', fmt_(t['Fecha de atencion'])],
+          ['Atención en sitio', t['Atencion en sitio']]],
+        bloque: { titulo: 'Observaciones del técnico:', texto: String(t['Observaciones'] || '(sin observaciones)') },
+        boton: { texto: 'Revisar y autorizar', url: enlaceAprobacion_(c.id) }
+      }),
+      body: 'Solicitud de aprobación (' + s.sust + ': ' + s.detalle + ') del ticket ' + c.id + '. Técnico: ' + t['Técnico asignado'] +
+        '. Cliente: ' + c.cliente + '.\nAutorizar: ' + enlaceAprobacion_(c.id)
+    });
+    return { ok: true, aprobacion: 'Pendiente', fecha: fmt_(ahora) };
+  } catch (e) {
+    return { ok: false, error: e.message, campo: e.campo || '' };
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+// Aprueba y avisa al técnico y a Viviana. Sirve para el correo y para el dashboard.
+function aprobar_(id, quien) {
+  let lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    const t = buscarTicket_(id);
+    const est = String(t['Aprobación'] || '');
+    if (est === 'Aprobada') return { ok: true, ya: true, fecha: fmt_(t['Fecha aprobación']) };
+    if (est !== 'Pendiente') throw new Error('Este ticket no tiene una solicitud pendiente (el técnico pudo haberla modificado).');
+    const sh = hoja_('TICKETS');
+    ['Aprobación', 'Fecha aprobación', 'Aprobado por'].forEach(function (c) { asegurarColumna_(sh, c); });
+    const ahora = new Date();
+    escribir_(sh, t._fila, { 'Aprobación': 'Aprobada', 'Fecha aprobación': ahora, 'Aprobado por': quien });
+    SpreadsheetApp.flush();
+    lock.releaseLock();
+    lock = null;
+    notificarAprobacion_(t, ahora);
+    return { ok: true, ya: false, fecha: fmt_(ahora) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+function notificarAprobacion_(t, fecha) {
+  const id = String(t['ID_Ticket']);
+  const nombre = String(t['Técnico asignado'] || '').trim();
+  let correoTec = String(t['Correo técnico'] || '').trim();
+  if (!correoTec) {
+    const tec = leer_('TECNICOS').filter(function (x) { return x['Nombre'] === nombre; })[0];
+    correoTec = tec ? String(tec['Correo'] || '').trim() : '';
+  }
+  const sust = String(t['Sustitución'] || ''), det = String(t['Detalle sustitución'] || '');
+  const que = sust === SUST_PIEZA ? 'La pieza «' + det + '»' : 'El equipo «' + det + '»';
+  const destinos = [correoTec, CORREO_ENTREGA].filter(String).join(',');
+  MailApp.sendEmail({
+    to: destinos,
+    subject: '[' + EMPRESA + '] APROBADO: ' + sust + ' · ticket ' + id,
+    htmlBody: correoHtml_({
+      color: '#1e7a46', titulo: sust + ' aprobado · ' + id,
+      subtitulo: que + ' fue aprobado y debe entregarse al técnico ' + (nombre || '') + '.',
+      filas: [['Ticket', id], ['Aprobado', sust], [sust === SUST_PIEZA ? 'Pieza' : 'Equipo', det],
+        ['Entregar a', nombre], ['Cliente', t['Cliente']], ['Ubicación', t['Estado'] + ' (Región ' + t['Región'] + ')'],
+        ['Equipo reportado', t['Equipo'] + (t['Serial'] ? ' (serial ' + t['Serial'] + ')' : '')], ['Fecha de aprobación', fmt_(fecha)]],
+      boton: { texto: 'Abrir ticket', url: enlaceTecnico_(id) },
+      pie: 'Viviana: por favor entrega al técnico lo aprobado.'
+    }),
+    body: que + ' fue aprobado (ticket ' + id + ') y debe entregarse al técnico ' + nombre + '. Cliente: ' + t['Cliente']
+  });
+}
+
+// Página que abre el botón del correo: pide confirmación antes de aprobar
+function paginaAprobacion_(p) {
+  const id = String(p.id || ''), k = String(p.k || '');
+  const html = function (cuerpo) {
+    return HtmlService.createHtmlOutput('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
+      '<body style="font-family:Arial,sans-serif;max-width:520px;margin:30px auto;padding:0 16px;color:#0f3d4f">' + cuerpo + '</body></html>')
+      .setTitle('Aprobación · ' + EMPRESA);
+  };
+  try {
+    if (!/^TK-\d+$/.test(id) || !/^[0-9a-f]{32}$/.test(k) || k !== tokenAprob_(id)) throw new Error('Enlace no válido.');
+    const t = buscarTicket_(id);
+    const est = String(t['Aprobación'] || '');
+    const resumen = '<p><b>' + h_(t['Sustitución']) + '</b>: ' + h_(t['Detalle sustitución']) + '</p>' +
+      '<p>Técnico: ' + h_(t['Técnico asignado']) + '<br>Cliente: ' + h_(t['Cliente']) + '<br>Equipo: ' + h_(t['Equipo']) + '</p>';
+    if (est === 'Aprobada') return html('<h2>Ticket ' + h_(id) + '</h2>' + resumen + '<p style="color:#1e7a46"><b>✔ Ya fue aprobada el ' + h_(fmt_(t['Fecha aprobación'])) + '.</b></p>');
+    if (est !== 'Pendiente') return html('<h2>Ticket ' + h_(id) + '</h2><p>No hay una solicitud pendiente para este ticket.</p>');
+    return html('<h2>Autorizar solicitud · ' + h_(id) + '</h2>' + resumen +
+      '<button id="b" style="background:#1e7a46;color:#fff;border:0;border-radius:6px;padding:12px 26px;font-size:16px;font-weight:bold;cursor:pointer">Confirmar autorización</button>' +
+      '<p id="m"></p><script>document.getElementById("b").onclick=function(){var b=this;b.disabled=true;b.textContent="Autorizando…";' +
+      'google.script.run.withSuccessHandler(function(r){document.getElementById("m").innerHTML=r.ok?"<b style=\\"color:#1e7a46\\">✔ Autorizado. Se avisó al técnico y a Viviana Hidalgo.</b>":"<b style=\\"color:#b3261e\\">"+r.error+"</b>";' +
+      'if(r.ok)b.style.display="none";else{b.disabled=false;b.textContent="Reintentar";}})' +
+      '.withFailureHandler(function(e){document.getElementById("m").textContent=e.message;b.disabled=false;b.textContent="Reintentar";})' +
+      '.aprobarPorEnlace(' + JSON.stringify(id) + ',' + JSON.stringify(k) + ');};</script>');
+  } catch (e) {
+    return html('<h2>No se pudo abrir</h2><p>' + h_(e.message) + '</p>');
+  }
+}
+
+// La llama la página de arriba (google.script.run)
+function aprobarPorEnlace(id, k) {
+  if (!/^TK-\d+$/.test(String(id)) || String(k) !== tokenAprob_(id)) return { ok: false, error: 'Enlace no válido.' };
+  return aprobar_(id, 'Correo de aprobación');
+}
+
+// Botón Aprobar del dashboard
+function aprobarDesdeDashboard(clave, id) {
+  try {
+    validarClave_(clave);
+    return aprobar_(String(id), 'Dashboard');
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
