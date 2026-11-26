@@ -266,14 +266,16 @@
 
   function pintarAprob() {
   const a = T.aprobacion;
+  $('aprobEstado').className = 'msg ' + (a === 'Rechazada' ? 'err' : 'info');
   $('aprobEstado').textContent = a === 'Aprobada' ? '✔ Aprobada el ' + (T.fechaAprobacion || '') + '. Coordinación ya avisó para la entrega.'
+    : a === 'Rechazada' ? '✖ Rechazada el ' + (T.fechaAprobacion || '') + '. Puedes volver a solicitarla o abrir el ticket de garantía.'
     : a === 'Pendiente' ? 'Aprobación pendiente (solicitada ' + (T.fechaSolicitud || '') + ').'
     : 'Aún no has solicitado aprobación para esta sustitución.';
   $('btnAprob').disabled = a === 'Aprobada' || !T.editable;
-  $('btnAprob').textContent = a === 'Pendiente' ? 'Reenviar solicitud' : 'Solicitar aprobación';
-  $('btnGarantia').hidden = a !== 'Aprobada';
+  $('btnAprob').textContent = a === 'Pendiente' ? 'Reenviar solicitud' : a === 'Rechazada' ? 'Volver a solicitar aprobación' : 'Solicitar aprobación';
+  $('btnGarantia').hidden = a !== 'Aprobada' && a !== 'Rechazada';
   $('btnGarantia').textContent = T.garantiaId ? 'Ver ticket de garantía ' + T.garantiaId : 'Ticket de garantía';
-  }
+}
 
   async function solicitar() {
     if (!T || !T.editable) return;
@@ -365,6 +367,7 @@
       const r = await api('guardarTicketTecnico', ID, TK, d);
       if (!r.ok) { if (r.campo) { setErr(r.campo, r.error); $(r.campo).focus(); } throw new Error(r.error); }
       T.estatus = r.estatus; $('estBadge').innerHTML = badge(r.estatus);
+      if (r.aprobacion !== undefined) { T.aprobacion = r.aprobacion; pintarAprob(); }
       if (r.prioridad && (r.prioridad !== T.prioridad || r.limite !== T.limite)) {
         T.prioridad = r.prioridad; T.limite = r.limite; T.vencido = !!r.vencido;
         T.urgencia = ((T.urgencias || []).filter(u => u.id === r.prioridad)[0] || {}).texto || T.urgencia;
