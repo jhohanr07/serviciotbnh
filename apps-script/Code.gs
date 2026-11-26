@@ -106,6 +106,7 @@ function apiPermitida_(fn) {
     crearTicketGarantia: crearTicketGarantia,
     guardarSeguimientoGarantia: guardarSeguimientoGarantia,
     solicitarAprobacion: solicitarAprobacion,
+    rechazarDesdeDashboard: rechazarDesdeDashboard,
     aprobarDesdeDashboard: aprobarDesdeDashboard,
     ping: function () { return { ok: true, empresa: EMPRESA, hora: fmt_(new Date()) }; }
   }[fn] || null;
@@ -627,8 +628,10 @@ function correoHtml_(o) {
     (o.bloque ? '<p style="margin:14px 0 4px;color:#52707a">' + h_(o.bloque.titulo) + '</p>' +
       '<div style="background:#e6f7f3;padding:10px 12px;border-radius:6px;white-space:pre-wrap;font-size:14px">' + h_(o.bloque.texto) + '</div>' : '') +
     (o.boton && o.boton.url ? '<p style="margin:22px 0 8px"><a href="' + o.boton.url + '" style="background:#00668a;color:#ffffff;' +
-      'text-decoration:none;padding:12px 26px;border-radius:6px;font-weight:bold;display:inline-block">' + h_(o.boton.texto) + '</a></p>' +
-      '<p style="font-size:12px;color:#52707a;margin:0">Si el botón no funciona, copia este enlace: ' + o.boton.url + '</p>' : '') +
+      'text-decoration:none;padding:12px 26px;border-radius:6px;font-weight:bold;display:inline-block">' + h_(o.boton.texto) + '</a>' +
+    (o.boton2 && o.boton2.url ? ' <a href="' + o.boton2.url + '" style="background:#b3261e;color:#ffffff;' +
+      'text-decoration:none;padding:12px 26px;border-radius:6px;font-weight:bold;display:inline-block">' + h_(o.boton2.texto) + '</a>' : '') + '</p>' +
+    '<p style="font-size:12px;color:#52707a;margin:0">Si el botón no funciona, copia este enlace: ' + o.boton.url + '</p>' : '') +
     (o.pie ? '<p style="font-size:12px;color:#52707a;margin-top:18px">' + h_(o.pie) + '</p>' : '') + '</div>';
 }
 
@@ -851,7 +854,7 @@ function guardarTicketTecnico(id, tk, d) {
     const s = sustitucionDatos_(t, d.sustitucion, d.sustDetalle);
     const aprobActual = String(t['Aprobación'] || '');
     const cambioSust = s.sust !== String(t['Sustitución'] || '') || s.detalle !== String(t['Detalle sustitución'] || '');
-    if (aprobActual === 'Aprobada' && cambioSust) err('La sustitución ya fue aprobada y no se puede modificar.', 'sustitucion');
+    if (cambioSust && (aprobActual === 'Pendiente' || aprobActual === 'Rechazada')) { cambios['Aprobación'] = ''; aprobNueva = ''; }
     if (fAtencion && fRep && diaN_(fAtencion) < diaN_(fRep)) err('La atención no puede ser anterior al reporte (' + fmtDia_(fRep) + ').', 'fechaAtencion');
 
     const sh = hoja_('TICKETS');
@@ -1527,8 +1530,9 @@ function sustitucionDatos_(t, sust, detalle) {
 
 function tokenAprob_(id) { return firma_('aprob|' + id).slice(0, 32); }
 
-function enlaceAprobacion_(id) {
-  return ScriptApp.getService().getUrl() + '?accion=aprobar&id=' + encodeURIComponent(id) + '&k=' + tokenAprob_(id);
+function enlaceAprobacion_(id, op) {
+  return ScriptApp.getService().getUrl() + '?accion=aprobar&id=' + encodeURIComponent(id) + '&k=' + tokenAprob_(id) +
+    (op ? '&op=' + op : '');
 }
 
 // El técnico pulsa "Solicitar aprobación"
@@ -1571,7 +1575,8 @@ function solicitarAprobacion(id, tk, d) {
           ['Reportado', fmt_(t['Fecha'])], ['Fecha de atención', fmt_(t['Fecha de atencion'])],
           ['Atención en sitio', t['Atencion en sitio']]],
         bloque: { titulo: 'Observaciones del técnico:', texto: String(t['Observaciones'] || '(sin observaciones)') },
-        boton: { texto: 'Revisar y autorizar', url: enlaceAprobacion_(c.id) }
+        boton: { texto: 'Revisar y autorizar', url: enlaceAprobacion_(c.id) },
+        boton2: { texto: 'Rechazar', url: enlaceAprobacion_(c.id, 'rechazar') }
       }),
       body: 'Solicitud de aprobación (' + s.sust + ': ' + s.detalle + ') del ticket ' + c.id + '. Técnico: ' + t['Técnico asignado'] +
         '. Cliente: ' + c.cliente + '.\nAutorizar: ' + enlaceAprobacion_(c.id)
@@ -1637,9 +1642,9 @@ function notificarAprobacion_(t, fecha) {
   });
 }
 
-// Página que abre el botón del correo: pide confirmación antes de aprobar
+// Página que abre el botón del correo: pide confirmación antes de aprobar o rechazar
 function paginaAprobacion_(p) {
-  const id = String(p.id || ''), k = String(p.k || '');
+  const id = String(p.id || ''), k = String(p.k || ''), soloRechazo = String(p.op || '') === 'rechazar';
   const html = function (cuerpo) {
     return HtmlService.createHtmlOutput('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
       '<body style="font-family:Arial,sans-serif;max-width:520px;margin:30px auto;padding:0 16px;color:#0f3d4f">' + cuerpo + '</body></html>')
@@ -1652,14 +1657,27 @@ function paginaAprobacion_(p) {
     const resumen = '<p><b>' + h_(t['Sustitución']) + '</b>: ' + h_(t['Detalle sustitución']) + '</p>' +
       '<p>Técnico: ' + h_(t['Técnico asignado']) + '<br>Cliente: ' + h_(t['Cliente']) + '<br>Equipo: ' + h_(t['Equipo']) + '</p>';
     if (est === 'Aprobada') return html('<h2>Ticket ' + h_(id) + '</h2>' + resumen + '<p style="color:#1e7a46"><b>✔ Ya fue aprobada el ' + h_(fmt_(t['Fecha aprobación'])) + '.</b></p>');
+    if (est === 'Rechazada') return html('<h2>Ticket ' + h_(id) + '</h2>' + resumen + '<p style="color:#b3261e"><b>✖ Ya fue rechazada el ' + h_(fmt_(t['Fecha aprobación'])) + '.</b></p>');
     if (est !== 'Pendiente') return html('<h2>Ticket ' + h_(id) + '</h2><p>No hay una solicitud pendiente para este ticket.</p>');
-    return html('<h2>Autorizar solicitud · ' + h_(id) + '</h2>' + resumen +
-      '<button id="b" style="background:#1e7a46;color:#fff;border:0;border-radius:6px;padding:12px 26px;font-size:16px;font-weight:bold;cursor:pointer">Confirmar autorización</button>' +
-      '<p id="m"></p><script>document.getElementById("b").onclick=function(){var b=this;b.disabled=true;b.textContent="Autorizando…";' +
-      'google.script.run.withSuccessHandler(function(r){document.getElementById("m").innerHTML=r.ok?"<b style=\\"color:#1e7a46\\">✔ Autorizado. Se avisó al técnico y a Viviana Hidalgo.</b>":"<b style=\\"color:#b3261e\\">"+r.error+"</b>";' +
-      'if(r.ok)b.style.display="none";else{b.disabled=false;b.textContent="Reintentar";}})' +
-      '.withFailureHandler(function(e){document.getElementById("m").textContent=e.message;b.disabled=false;b.textContent="Reintentar";})' +
-      '.aprobarPorEnlace(' + JSON.stringify(id) + ',' + JSON.stringify(k) + ');};</script>');
+
+    const botones =
+      '<textarea id="mo" maxlength="300" placeholder="Motivo (opcional, se envía al técnico si rechazas)" style="width:100%;box-sizing:border-box;min-height:64px;margin:8px 0;padding:8px;font:inherit"></textarea>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<button id="b" style="' + (soloRechazo ? 'display:none;' : '') + 'background:#1e7a46;color:#fff;border:0;border-radius:6px;padding:12px 26px;font-size:16px;font-weight:bold;cursor:pointer">Confirmar autorización</button>' +
+      '<button id="r" style="background:#b3261e;color:#fff;border:0;border-radius:6px;padding:12px 26px;font-size:16px;font-weight:bold;cursor:pointer">Rechazar</button></div>' +
+      '<p id="m"></p>';
+    const script = '<script>var ID=' + JSON.stringify(id) + ',K=' + JSON.stringify(k) + ';' +
+      'function ir(ok){var b=document.getElementById("b"),r=document.getElementById("r"),m=document.getElementById("m"),mo=document.getElementById("mo");' +
+      'var msg=function(txt,color){m.textContent=txt;m.style.color=color;m.style.fontWeight="bold";};' +
+      'b.disabled=true;r.disabled=true;' +
+      'var s=google.script.run.withSuccessHandler(function(x){' +
+      'if(x.ok){msg(ok?"✔ Autorizado. Se avisó al técnico y a Viviana Hidalgo.":"✖ Rechazada. Se avisó al técnico.",ok?"#1e7a46":"#b3261e");b.style.display="none";r.style.display="none";mo.style.display="none";}' +
+      'else{msg(x.error,"#b3261e");b.disabled=false;r.disabled=false;}})' +
+      '.withFailureHandler(function(e){msg(e.message,"#b3261e");b.disabled=false;r.disabled=false;});' +
+      'if(ok)s.aprobarPorEnlace(ID,K);else s.rechazarPorEnlace(ID,K,mo.value);}' +
+      'document.getElementById("b").onclick=function(){ir(true)};' +
+      'document.getElementById("r").onclick=function(){if(confirm("¿Rechazar esta solicitud?"))ir(false)};</script>';
+    return html('<h2>' + (soloRechazo ? 'Rechazar solicitud' : 'Autorizar solicitud') + ' · ' + h_(id) + '</h2>' + resumen + botones + script);
   } catch (e) {
     return html('<h2>No se pudo abrir</h2><p>' + h_(e.message) + '</p>');
   }
@@ -1702,7 +1720,8 @@ function crearTicketGarantia(id, tk, d) {
     const tickets = leer_('TICKETS');
     const o = tickets.filter(function (x) { return String(x['ID_Ticket']) === String(id); })[0];
     if (!o) throw new Error('No se encontró el ticket ' + id + '.');
-    if (String(o['Aprobación'] || '') !== 'Aprobada') throw new Error('La sustitución aún no está aprobada.');
+    const estAprob = String(o['Aprobación'] || '');
+    if (estAprob !== 'Aprobada' && estAprob !== 'Rechazada') throw new Error('Primero la sustitución debe estar aprobada o rechazada.');
     if (String(o['Ticket garantía'] || '')) throw new Error('Ya existe el ticket de garantía ' + o['Ticket garantía'] + '.');
 
     let max = 0;
@@ -1729,7 +1748,7 @@ function crearTicketGarantia(id, tk, d) {
       'Equipo': seguro_(o['Equipo']), 'Serial': texto_(o['Serial']), 'Descripción': seguro_(desc),
       'Prioridad': 'P4', 'Técnico asignado': COORDINADOR_ST, 'Correo técnico': correoCoord,
       'Estatus': 'Esperando repuesto', 'Fecha límite SLA': limite, 'Solicitud': TIPO_GARANTIA,
-      'Observaciones': '[' + fmt_(ahora) + ' · Sistema] Ticket creado desde ' + id + '. Etapa: ' + etapa + '.',
+      'Observaciones': '[' + fmt_(ahora) + ' · Sistema] Ticket creado desde ' + id + ' (sustitución ' + estAprob.toLowerCase() + '). Etapa: ' + etapa + '.',
       'Ticket origen': id, 'Pieza garantía': seguro_(pieza), 'Reportado Mindary': mindary,
       'Etapa garantía': etapa, 'Fecha solicitud garantía': fSol
     });
@@ -1789,5 +1808,79 @@ function guardarSeguimientoGarantia(id, tk, etapa, nota) {
     return { ok: false, error: e.message };
   } finally {
     if (lock) lock.releaseLock();
+  }
+}
+// Rechaza la solicitud y avisa al técnico. Sirve para el correo y para el dashboard.
+function rechazar_(id, quien, motivo) {
+  let lock = null;
+  try {
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    const t = buscarTicket_(id);
+    const est = String(t['Aprobación'] || '');
+    if (est === 'Rechazada') return { ok: true, ya: true, fecha: fmt_(t['Fecha aprobación']) };
+    if (est === 'Aprobada') throw new Error('Esta solicitud ya fue aprobada; no se puede rechazar.');
+    if (est !== 'Pendiente') throw new Error('Este ticket no tiene una solicitud pendiente (el técnico pudo haberla modificado).');
+    const sh = hoja_('TICKETS');
+    ['Aprobación', 'Fecha aprobación', 'Aprobado por'].forEach(function (c) { asegurarColumna_(sh, c); });
+    const ahora = new Date();
+    motivo = String(motivo || '').trim().slice(0, 300);
+    const linea = '[' + fmt_(ahora) + ' · Aprobación] ' + t['Sustitución'] + ' rechazada por ' + quien + (motivo ? ': ' + motivo : '.');
+    const previo = String(t['Observaciones'] || '');
+    escribir_(sh, t._fila, {
+      'Aprobación': 'Rechazada', 'Fecha aprobación': ahora, 'Aprobado por': quien,
+      'Observaciones': seguro_(previo ? previo + '\n' + linea : linea)
+    });
+    SpreadsheetApp.flush();
+    lock.releaseLock();
+    lock = null;
+    try { notificarRechazo_(t, ahora, motivo); } catch (e) { console.error('Correo de rechazo: ' + e.message); }
+    return { ok: true, ya: false, fecha: fmt_(ahora) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+function notificarRechazo_(t, fecha, motivo) {
+  const id = String(t['ID_Ticket']);
+  const nombre = String(t['Técnico asignado'] || '').trim();
+  let correoTec = String(t['Correo técnico'] || '').trim();
+  if (!correoTec) {
+    const tec = leer_('TECNICOS').filter(function (x) { return x['Nombre'] === nombre; })[0];
+    correoTec = tec ? String(tec['Correo'] || '').trim() : '';
+  }
+  const sust = String(t['Sustitución'] || ''), det = String(t['Detalle sustitución'] || '');
+  MailApp.sendEmail({
+    to: correoTec || CORREO_APROBACIONES,
+    subject: '[' + EMPRESA + '] RECHAZADO: ' + sust + ' · ticket ' + id,
+    htmlBody: correoHtml_({
+      color: '#b3261e', titulo: sust + ' rechazado · ' + id,
+      subtitulo: 'La solicitud de ' + sust.toLowerCase() + ' fue rechazada' + (nombre ? ' (técnico ' + nombre + ')' : '') + '.',
+      filas: [['Ticket', id], ['Solicitado', sust], [sust === SUST_PIEZA ? 'Pieza' : 'Equipo', det],
+        ['Cliente', t['Cliente']], ['Equipo reportado', t['Equipo'] + (t['Serial'] ? ' (serial ' + t['Serial'] + ')' : '')],
+        ['Fecha del rechazo', fmt_(fecha)]],
+      bloque: motivo ? { titulo: 'Motivo:', texto: motivo } : null,
+      boton: { texto: 'Abrir ticket', url: enlaceTecnico_(id) },
+      pie: 'Puedes volver a solicitar la aprobación o, si corresponde, abrir el ticket de garantía desde la ficha.'
+    }),
+    body: sust + ' rechazado (ticket ' + id + ').' + (motivo ? ' Motivo: ' + motivo : '') + '\nAbrir ticket: ' + enlaceTecnico_(id)
+  });
+}
+
+// La llama la página del correo (google.script.run)
+function rechazarPorEnlace(id, k, motivo) {
+  if (!/^TK-\d+$/.test(String(id)) || String(k) !== tokenAprob_(id)) return { ok: false, error: 'Enlace no válido.' };
+  return rechazar_(id, 'Correo de aprobación', motivo);
+}
+
+// Botón Rechazar del dashboard
+function rechazarDesdeDashboard(clave, id, motivo) {
+  try {
+    validarClave_(clave);
+    return rechazar_(String(id), 'Dashboard', motivo);
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 }
