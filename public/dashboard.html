@@ -326,9 +326,9 @@
     ocupado($('btnAlertas'), false);
   }
   function renderAprob() {
-  const todas = T.filter(t => t.aprobacion === 'Pendiente' || t.aprobacion === 'Aprobada');
+  const todas = T.filter(t => ['Pendiente', 'Aprobada', 'Rechazada'].indexOf(t.aprobacion) >= 0);
   const pend = todas.filter(t => t.aprobacion === 'Pendiente').sort((a, b) => (a.solicitudAprob || 0) - (b.solicitudAprob || 0));
-  const hechas = todas.filter(t => t.aprobacion === 'Aprobada').sort((a, b) => (b.fechaAprob || 0) - (a.fechaAprob || 0)).slice(0, 5);
+  const hechas = todas.filter(t => t.aprobacion !== 'Pendiente').sort((a, b) => (b.fechaAprob || 0) - (a.fechaAprob || 0)).slice(0, 5);
   $('aprobBox').hidden = !pend.length;
   if (!pend.length) return;
   $('aprobTxt').textContent = pend.length === 1 ? '1 solicitud de aprobación pendiente' : pend.length + ' solicitudes de aprobación pendientes';
@@ -336,9 +336,13 @@
     '<li style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between">' +
     '<span><b style="color:#b26a00">' + esc(t.id) + '</b> · ' + esc(t.sustitucion) + ': ' + esc(t.sustDetalle) +
     ' · ' + esc(t.cliente) + ' · ' + esc(t.tec) + (t.solicitudAprob ? ' · solicitada ' + fFechaHora(t.solicitudAprob) : '') + '</span>' +
-    '<button type="button" class="btn sm" data-aprob="' + esc(t.id) + '">Aprobar</button></li>').join('');
+    '<span style="display:flex;gap:6px">' +
+    '<button type="button" class="btn sm" data-aprob="' + esc(t.id) + '">Aprobar</button>' +
+    '<button type="button" class="btn danger sm" data-rech="' + esc(t.id) + '">Rechazar</button></span></li>').join('');
   $('aprobList').querySelectorAll('[data-aprob]').forEach(b => b.onclick = () => aprobar(b.getAttribute('data-aprob'), b));
-  $('aprobHechas').textContent = hechas.length ? 'Aprobadas recientemente: ' + hechas.map(t => t.id + ' (' + fFechaHora(t.fechaAprob) + ')').join(' · ') : '';
+  $('aprobList').querySelectorAll('[data-rech]').forEach(b => b.onclick = () => rechazar(b.getAttribute('data-rech'), b));
+  $('aprobHechas').textContent = hechas.length ? 'Respondidas recientemente: ' +
+    hechas.map(t => t.id + (t.aprobacion === 'Aprobada' ? ' ✔' : ' ✖') + ' (' + fFechaHora(t.fechaAprob) + ')').join(' · ') : '';
 }
 
 async function aprobar(id, btn) {
@@ -349,6 +353,19 @@ async function aprobar(id, btn) {
     const r = await api('aprobarDesdeDashboard', CLAVE, id);
     if (!r.ok) throw new Error(r.error);
     aviso(r.ya ? 'Ya estaba aprobada.' : 'Aprobado. Se envió el correo al técnico y a Viviana.');
+    await cargar();
+  } catch (e) { aviso(e.message, 'err'); ocupado(btn, false); }
+}
+
+async function rechazar(id, btn) {
+  const t = T.filter(x => x.id === id)[0];
+  const motivo = prompt('Rechazar ' + t.sustitucion.toLowerCase() + ' (' + t.sustDetalle + ') del ticket ' + id + '.\nMotivo (opcional, se envía al técnico):');
+  if (motivo === null) return;
+  ocupado(btn, true, 'Rechazando…');
+  try {
+    const r = await api('rechazarDesdeDashboard', CLAVE, id, motivo);
+    if (!r.ok) throw new Error(r.error);
+    aviso(r.ya ? 'Ya estaba rechazada.' : 'Rechazada. Se avisó al técnico por correo.');
     await cargar();
   } catch (e) { aviso(e.message, 'err'); ocupado(btn, false); }
 }
