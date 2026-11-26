@@ -26,6 +26,13 @@
   .dirty.on { color: var(--warn); font-weight: 600; }
   .ro input, .ro select, .ro textarea { background: var(--track); }
   [hidden] { display: none !important; }
+  #dlgGar { border: 0; border-radius: 12px; padding: 0; width: min(520px, calc(100% - 24px)); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  #dlgGar::backdrop { background: rgba(15,61,79,.5); }
+  #dlgGar input[readonly] { background: var(--track); }
+  .pasos { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+  .pasos li { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+  .pasos li.hecho { color: #1e7a46; border-color: #1e7a46; }
+  .pasos li.actual { background: #e6f7f3; color: #0f3d4f; font-weight: 700; border-color: #00668a; }
 </style>
 </head>
 <body>
@@ -102,8 +109,11 @@
         </div>
       </div>
       <div class="field" id="boxAprob" hidden>
-        <div class="msg info" id="aprobEstado" style="margin:0 0 8px"></div>
-        <button class="btn ghost" id="btnAprob" type="button">Solicitar aprobación</button>
+       <div class="msg info" id="aprobEstado" style="margin:0 0 8px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+         <button class="btn ghost" id="btnAprob" type="button">Solicitar aprobación</button>
+          <button class="btn" id="btnGarantia" type="button" hidden>Ticket de garantía</button>
+         </div>
       </div>
       <div class="grid2">
         <div class="field">
@@ -134,6 +144,43 @@
     </fieldset>
   </form>
 </main>
+<dialog id="dlgGar" aria-labelledby="gTitulo">
+  <div style="padding:20px">
+    <h2 id="gTitulo" style="margin:0 0 4px;font-size:20px">Ticket de garantía</h2>
+    <p class="hint" style="margin:0 0 14px">Se asignará a Coordinador ST y vence en 60 días.</p>
+    <div class="field"><label for="gTicket">Nº de ticket que generó la garantía</label><input id="gTicket" readonly></div>
+    <div class="field"><label for="gEquipo">Equipo y serial</label><input id="gEquipo" readonly></div>
+    <div class="field"><label for="gCliente">Cliente</label><input id="gCliente" readonly></div>
+    <div class="grid2">
+      <div class="field"><label for="gFecha">Fecha de la solicitud</label><input id="gFecha" type="date"><div class="ferr" id="gFechaErr"></div></div>
+      <div class="field"><label for="gMindary">¿Se reportó a Mindary?</label>
+        <select id="gMindary"><option value="">Selecciona…</option><option>Sí</option><option>No</option></select>
+        <div class="ferr" id="gMindaryErr"></div></div>
+    </div>
+    <div class="field"><label for="gPieza">Pieza o equipo solicitado</label><input id="gPieza" maxlength="300"><div class="ferr" id="gPiezaErr"></div></div>
+    <div class="field"><label for="gTecnico">Técnico</label><input id="gTecnico" readonly></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn ghost" id="gCancelar" type="button">Cancelar</button>
+      <button class="btn" id="gCrear" type="button">Crear ticket de garantía</button>
+    </div>
+  </div>
+</dialog>
+
+<section id="frmGar" class="card" hidden>
+  <p style="margin:0 0 12px">Ticket origen: <a id="gOrigen" href="#"></a></p>
+  <ol class="pasos" id="pasos"></ol>
+  <div class="field">
+    <label for="gEtapa">Etapa actual</label>
+    <select id="gEtapa"></select>
+    <div class="hint">Al marcar «BNH» (llegó a BNH) el ticket se cierra.</div>
+  </div>
+  <div class="field">
+    <label for="gNota">Nota <span class="opt-txt">(guía DHL, número de aduana, etc.)</span></label>
+    <textarea id="gNota" maxlength="500" style="min-height:76px"></textarea>
+  </div>
+  <button class="btn" id="btnEtapa" type="button">Guardar etapa</button>
+  <div class="msg info" id="gCerrado" hidden>Ticket cerrado: la pieza o equipo llegó a BNH.</div>
+</section>
 
 <div class="savebar" id="savebar" hidden>
   <div class="savebar-in">
@@ -180,7 +227,7 @@
       ['Equipo a revisar', t.equipoInterno], ['Cliente', t.cliente], ['Contacto', t.contacto],
       ['Equipo', textoEquipo(t)],
       ['Ubicación', t.estado + ' · Región ' + t.region], ['Urgencia', falla ? t.urgencia : ''],
-      ['Reportado', t.fecha], ['Límite', t.limite]
+      ['Reportado', t.fecha], ['Límite', t.limite],['Ticket origen', t.origen], ['Etapa de garantía', t.etapaGar]
     ].filter(f => f[1]);
     $('info').innerHTML =
       '<div class="contact">' +
@@ -218,12 +265,14 @@
   }
 
   function pintarAprob() {
-    const a = T.aprobacion;
-    $('aprobEstado').textContent = a === 'Aprobada' ? '✔ Aprobada el ' + (T.fechaAprobacion || '') + '. Coordinación ya avisó para la entrega.'
-      : a === 'Pendiente' ? 'Aprobación pendiente (solicitada ' + (T.fechaSolicitud || '') + ').'
-      : 'Aún no has solicitado aprobación para esta sustitución.';
-    $('btnAprob').disabled = a === 'Aprobada' || !T.editable;
-    $('btnAprob').textContent = a === 'Pendiente' ? 'Reenviar solicitud' : 'Solicitar aprobación';
+  const a = T.aprobacion;
+  $('aprobEstado').textContent = a === 'Aprobada' ? '✔ Aprobada el ' + (T.fechaAprobacion || '') + '. Coordinación ya avisó para la entrega.'
+    : a === 'Pendiente' ? 'Aprobación pendiente (solicitada ' + (T.fechaSolicitud || '') + ').'
+    : 'Aún no has solicitado aprobación para esta sustitución.';
+  $('btnAprob').disabled = a === 'Aprobada' || !T.editable;
+  $('btnAprob').textContent = a === 'Pendiente' ? 'Reenviar solicitud' : 'Solicitar aprobación';
+  $('btnGarantia').hidden = a !== 'Aprobada';
+  $('btnGarantia').textContent = T.garantiaId ? 'Ver ticket de garantía ' + T.garantiaId : 'Ticket de garantía';
   }
 
   async function solicitar() {
@@ -259,6 +308,7 @@
       const t = await api('getTicketTecnico', ID, TK);
       if (!t.ok) throw new Error(t.error);
       T = t; pintarInfo(t);
+      if (t.esGarantia) { iniciarGarantia(t); return; }
       $('prioridad').innerHTML = (t.urgencias || []).map(u => '<option value="' + esc(u.id) + '">' + esc(u.id + ' · ' + u.texto + ' (' + u.horas + ' h)') + '</option>').join('');
       $('prioridad').value = t.prioridad;
       $('estatus').innerHTML = t.estatusTecnico.map(s => '<option>' + esc(s) + '</option>').join('');
@@ -325,6 +375,72 @@
     } catch (ex) { aviso(ex.message, 'err'); }
     ocupado($('btnGuardar'), false);
   }
+
+/* ---------- Ticket de garantía ---------- */
+const dlg = $('dlgGar');
+$('btnGarantia').onclick = function () {
+  if (T.garantiaId) { location.href = '/tecnico?id=' + T.garantiaId + '&t=' + T.garantiaTk; return; }
+  ['gFecha', 'gMindary', 'gPieza'].forEach(k => setErr(k, ''));
+  $('gTicket').value = T.id;
+  $('gEquipo').value = textoEquipo();
+  $('gCliente').value = T.cliente;
+  $('gFecha').value = T.hoy; $('gFecha').max = T.hoy; $('gFecha').min = T.fechaReporte;
+  $('gPieza').value = $('sustDetalle').value || T.sustDetalle || '';
+  $('gMindary').value = '';
+  $('gTecnico').value = T.tecnico;
+  dlg.showModal();
+};
+$('gCancelar').onclick = () => dlg.close();
+
+$('gCrear').onclick = async function () {
+  ['gFecha', 'gMindary', 'gPieza'].forEach(k => setErr(k, ''));
+  const d = { fecha: $('gFecha').value, pieza: $('gPieza').value.trim(), mindary: $('gMindary').value };
+  if (!d.pieza) { setErr('gPieza', 'Indica la pieza o equipo.'); return $('gPieza').focus(); }
+  if (!d.mindary) { setErr('gMindary', 'Indica si se reportó a Mindary.'); return $('gMindary').focus(); }
+  ocupado($('gCrear'), true, 'Creando…');
+  try {
+    const r = await api('crearTicketGarantia', ID, TK, d);
+    if (!r.ok) { if (r.campo) setErr(r.campo, r.error); throw new Error(r.error); }
+    T.garantiaId = r.id; T.garantiaTk = r.t;
+    dlg.close(); pintarAprob();
+    aviso('Ticket ' + r.id + ' creado y asignado a ' + r.asignado + '.');
+  } catch (ex) { aviso(ex.message, 'err'); }
+  ocupado($('gCrear'), false);
+};
+
+/* ---------- Vista del ticket de garantía (seguimiento) ---------- */
+function pintarPasos() {
+  const i = T.etapasGar.indexOf(T.etapaGar);
+  $('pasos').innerHTML = T.etapasGar.map((e, k) =>
+    '<li class="' + (k < i || (T.etapaGar === 'BNH' && k === i && !T.editable) ? 'hecho' : k === i ? 'actual' : '') + '">' +
+    (k < i ? '✔ ' : '') + esc(e) + '</li>').join('');
+}
+
+function iniciarGarantia(t) {
+  $('frm').hidden = true; $('savebar').hidden = true;
+  $('frmGar').hidden = false;
+  if (t.origen) { $('gOrigen').textContent = t.origen; $('gOrigen').href = '/tecnico?id=' + t.origen + '&t=' + t.origenTk; }
+  $('gEtapa').innerHTML = t.etapasGar.map(e => '<option>' + esc(e) + '</option>').join('');
+  $('gEtapa').value = t.etapaGar || t.etapasGar[0];
+  pintarPasos();
+  const cerrar = () => { $('gEtapa').disabled = $('gNota').disabled = $('btnEtapa').disabled = true; $('gCerrado').hidden = false; };
+  if (!t.editable) cerrar();
+  $('btnEtapa').onclick = async function () {
+    const etapa = $('gEtapa').value;
+    if (etapa === 'BNH' && !confirm('Al marcar «BNH» el ticket se cierra. ¿Continuar?')) return;
+    ocupado($('btnEtapa'), true, 'Guardando…');
+    try {
+      const r = await api('guardarSeguimientoGarantia', ID, TK, etapa, $('gNota').value);
+      if (!r.ok) throw new Error(r.error);
+      T.etapaGar = r.etapa; T.estatus = r.estatus; T.editable = !r.cerrado;
+      $('estBadge').innerHTML = badge(r.estatus);
+      $('gNota').value = ''; pintarPasos();
+      if (r.cerrado) cerrar();
+      aviso(r.cerrado ? 'Ticket cerrado: llegó a BNH.' : 'Etapa actualizada: ' + r.etapa + '.');
+    } catch (ex) { aviso(ex.message, 'err'); }
+    if (T.editable) ocupado($('btnEtapa'), false);
+  };
+}
 
   $('btnGuardar').onclick = guardar;
   window.addEventListener('beforeunload', e => { if (SUCIO) { e.preventDefault(); e.returnValue = ''; } });
