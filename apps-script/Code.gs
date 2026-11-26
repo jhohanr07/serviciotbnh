@@ -13,7 +13,7 @@
  *   CLAVE_PANEL   (obligatoria) clave del panel y del dashboard
  *   CORREO_ADMIN  (opcional)    copia de alertas y casos sin técnico
  *
- * Rutas en Vercel:  /   /estado   /panel   /dashboard   /tecnico?id=..&t=..
+ * Rutas en Vercel:  /   /estado   /panel   /dashboard   /tecnicos   /tecnico?id=..&t=..
  */
 
 const TZ = 'America/Caracas';
@@ -22,13 +22,21 @@ const EMPRESA = 'BNH Medical';
 const H_ESTADOS = ['Estado', 'Región'];
 const H_TECNICOS = ['Nombre', 'Región', 'Correo', 'Activo'];
 
+// Incluye las columnas de sustitución/aprobación y las de garantía
+// (se escriben completas aquí porque las constantes COLS_* se declaran más abajo)
 const H_TICKETS = ['ID_Ticket', 'Fecha', 'Cliente', 'Contacto', 'Teléfono', 'Correo', 'Estado', 'Región',
   'Equipo', 'Serial', 'Descripción', 'Prioridad', 'Técnico asignado', 'Correo técnico', 'Estatus',
   'Fecha límite SLA', 'Fecha de atencion', 'Observaciones', 'Garantia', 'Fecha cierre',
   'Atencion en sitio', 'Fecha de la visita', 'Última alerta', 'Solicitud', 'Periféricos', 'Licencia',
   'Cantidad equipos', 'Equipo interno',
-  'Sustitución', 'Detalle sustitución', 'Aprobación', 'Fecha solicitud aprobación', 'Fecha aprobación', 'Aprobado por'];
+  'Sustitución', 'Detalle sustitución', 'Aprobación', 'Fecha solicitud aprobación', 'Fecha aprobación', 'Aprobado por',
+  'Ticket garantía', 'Ticket origen', 'Pieza garantía', 'Reportado Mindary', 'Etapa garantía', 'Fecha solicitud garantía'];
 
+const TIPO_GARANTIA = 'Ticket de garantía';
+const COORDINADOR_ST = 'Coordinador ST';   // debe existir igual en la hoja TECNICOS
+const DIAS_GARANTIA = 60;                  // vencimiento (1 a 2 meses)
+const ETAPAS_GARANTIA = ['Pendiente de reportar', 'Reportado a Mindary', 'Enviado DHL', 'Aduana', 'BNH'];
+const COLS_GAR = ['Ticket garantía', 'Ticket origen', 'Pieza garantía', 'Reportado Mindary', 'Etapa garantía', 'Fecha solicitud garantía'];
 const SUST_PIEZA = 'Cambio de pieza';
 const SUST_EQUIPO = 'Cambio de equipo';
 const SUSTITUCIONES = [SUST_PIEZA, SUST_EQUIPO];
@@ -95,6 +103,8 @@ function apiPermitida_(fn) {
     reenviarTecnico: reenviarTecnico, getDashboardData: getDashboardData, enviarAlertasAhora: enviarAlertasAhora,
     tecnicoSolicitarCodigo: tecnicoSolicitarCodigo, tecnicoVerificarCodigo: tecnicoVerificarCodigo,
     getPanelTecnico: getPanelTecnico,
+    crearTicketGarantia: crearTicketGarantia,
+    guardarSeguimientoGarantia: guardarSeguimientoGarantia,
     solicitarAprobacion: solicitarAprobacion,
     aprobarDesdeDashboard: aprobarDesdeDashboard,
     ping: function () { return { ok: true, empresa: EMPRESA, hora: fmt_(new Date()) }; }
@@ -162,7 +172,7 @@ function doGet(e) {
       ': falta configurar URL_APP en las propiedades del script.</p>').setTitle(EMPRESA);
   }
   const page = String(p.page || '').trim().toLowerCase();
-  const ruta = ['estado', 'panel', 'dashboard', 'tecnico'].indexOf(page) >= 0 ? page : '';
+  const ruta = ['estado', 'panel', 'dashboard', 'tecnico', 'tecnicos'].indexOf(page) >= 0 ? page : '';
   const params = {};
   if (/^TK-\d+$/.test(p.id || '')) params.id = p.id;
   if (/^[0-9a-f]{32}$/.test(p.t || '')) params.t = p.t;
@@ -269,10 +279,11 @@ function configurarHojas() {
   sE.getRange('B2:B200').setDataValidation(regla(REGIONES));
   sTec.getRange('D2:D200').setDataValidation(regla(['SI', 'NO']));
   sT.getRange(2, colDe_(sT, 'Estatus'), 4999, 1).setDataValidation(regla(ESTATUS));
-  sT.getRange(2, colDe_(sT, 'Solicitud'), 4999, 1).setDataValidation(regla(TIPOS_SOLICITUD));
+  sT.getRange(2, colDe_(sT, 'Solicitud'), 4999, 1).setDataValidation(regla(TIPOS_SOLICITUD.concat([TIPO_GARANTIA])));
 
   SpreadsheetApp.getUi().alert(
     'Hojas listas.\n\n1) Escribe los nombres y correos reales en la hoja TECNICOS.\n' +
+    '   (Para los tickets de garantía agrega un técnico llamado "' + COORDINADOR_ST + '".)\n' +
     '2) Define CLAVE_PANEL y URL_APP en Configuración del proyecto > Propiedades del script.\n' +
     '3) Menú Servicio técnico > Generar token para Vercel.\n' +
     '   Implementa como aplicación web (Ejecutar como: yo · Acceso: cualquier persona).\n' +
@@ -514,7 +525,7 @@ function crearTicket(d) {
       }
     });
     const tecs = leer_('TECNICOS')
-      .filter(function (t) { return esActivo_(t) && t['Región'] === region; })
+      .filter(function (t) { return esActivo_(t) && t['Región'] === region && String(t['Nombre']).trim() !== COORDINADOR_ST; })
       .sort(function (a, b) { return (abiertos[a['Nombre']] || 0) - (abiertos[b['Nombre']] || 0); });
     const tec = tecs[0] || null;
 
@@ -787,6 +798,14 @@ function getTicketTecnico(id, tk) {
       sustitucion: String(t['Sustitución'] || ''), sustDetalle: String(t['Detalle sustitución'] || ''),
       aprobacion: String(t['Aprobación'] || ''), fechaSolicitud: fmt_(t['Fecha solicitud aprobación']),
       fechaAprobacion: fmt_(t['Fecha aprobación']),
+      esGarantia: tipoDe_(t) === TIPO_GARANTIA,
+      garantiaId: String(t['Ticket garantía'] || ''),
+      garantiaTk: t['Ticket garantía'] ? token_(String(t['Ticket garantía'])) : '',
+      origen: String(t['Ticket origen'] || ''),
+      origenTk: t['Ticket origen'] ? token_(String(t['Ticket origen'])) : '',
+      piezaGar: String(t['Pieza garantía'] || ''),
+      etapaGar: String(t['Etapa garantía'] || ''),
+      etapasGar: ETAPAS_GARANTIA,
       urgencias: URGENCIAS.map(function (u) { return { id: u.id, texto: u.texto, horas: u.horas }; })
     };
   } catch (e) {
@@ -833,8 +852,10 @@ function guardarTicketTecnico(id, tk, d) {
     const aprobActual = String(t['Aprobación'] || '');
     const cambioSust = s.sust !== String(t['Sustitución'] || '') || s.detalle !== String(t['Detalle sustitución'] || '');
     if (aprobActual === 'Aprobada' && cambioSust) err('La sustitución ya fue aprobada y no se puede modificar.', 'sustitucion');
-      COLS_SUST.forEach(function (c) { asegurarColumna_(hoja_('TICKETS'), c); });
     if (fAtencion && fRep && diaN_(fAtencion) < diaN_(fRep)) err('La atención no puede ser anterior al reporte (' + fmtDia_(fRep) + ').', 'fechaAtencion');
+
+    const sh = hoja_('TICKETS');
+    COLS_SUST.forEach(function (c) { asegurarColumna_(sh, c); });
 
     // Estatus automático según lo que llene el técnico
     let est = antes;
@@ -842,7 +863,6 @@ function guardarTicketTecnico(id, tk, d) {
     else if (fAtencion) est = pedido || (ESTATUS_SIN_RESPUESTA.indexOf(antes) >= 0 || antes === 'Resuelto' ? 'En reparación' : antes);
     else if (antes === 'Resuelto' || ESTATUS_TECNICO.indexOf(antes) >= 0) est = t['Técnico asignado'] ? 'Asignado' : 'Sin asignar';
 
-    const sh = hoja_('TICKETS');
     const cambios = {
       'Fecha de atencion': fAtencion, 'Observaciones': seguro_(obs), 'Atencion en sitio': seguro_(sitio),
       'Fecha de la visita': fVisita, 'Garantia': garantia, 'Fecha cierre': fCierre, 'Estatus': est,
@@ -855,7 +875,9 @@ function guardarTicketTecnico(id, tk, d) {
       if (fRep) { limite = new Date(fRep.getTime() + urgencia_(prioridad).horas * 3600000); cambios['Fecha límite SLA'] = limite; }
     }
 
-    if (cambioSust && aprobActual === 'Pendiente') cambios['Aprobación'] = '';
+    // Si cambia la sustitución mientras había una solicitud pendiente, esa solicitud deja de valer
+    let aprobNueva = aprobActual;
+    if (cambioSust && aprobActual === 'Pendiente') { cambios['Aprobación'] = ''; aprobNueva = ''; }
 
     escribir_(sh, t._fila, cambios);
     SpreadsheetApp.flush();
@@ -864,7 +886,7 @@ function guardarTicketTecnico(id, tk, d) {
 
     if (est === 'Resuelto' && antes !== 'Resuelto') notificarResuelto_(t);
     return { ok: true, estatus: est, avisoCliente: est === 'Resuelto' && antes !== 'Resuelto',
-      prioridad: prioridad || String(t['Prioridad']), limite: fmt_(limite),
+      prioridad: prioridad || String(t['Prioridad']), limite: fmt_(limite), aprobacion: aprobNueva,
       vencido: ESTATUS_ABIERTOS.indexOf(est) >= 0 && !!limite && limite.getTime() < Date.now() };
   } catch (e) {
     return { ok: false, error: e.message, campo: e.campo || '' };
@@ -976,6 +998,7 @@ function getPanelTecnico(sesion) {
         estado: String(t['Estado']), equipo: String(t['Equipo']), serial: String(t['Serial'] || ''),
         solicitud: tipoDe_(t), prioridad: String(t['Prioridad']), estatus: est, abierto: abierto,
         limite: fmt_(t['Fecha límite SLA']), cierre: fmt_(t['Fecha cierre']), cierreMs: ms_(t['Fecha cierre']),
+        etapaGar: String(t['Etapa garantía'] || ''),
         vencido: abierto && !!lim && lim < ahora,
         sinResp: abierto && ESTATUS_SIN_RESPUESTA.indexOf(est) >= 0 && !atencion && !!fecha && ahora - fecha >= limAlerta
       };
@@ -998,7 +1021,7 @@ const PALABRAS_VACIAS = ['DE', 'DEL', 'LA', 'LAS', 'LOS', 'EL', 'Y', 'CA', 'SA',
 const CLAVE_CACHE = 'DATOS_CLIENTES_V1';
 
 function norm_(s) {
-  return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 }
 
@@ -1219,10 +1242,11 @@ function getPanelData(clave) {
         equipo: String(t['Equipo']), serial: String(t['Serial']), descripcion: String(t['Descripción']),
         prioridad: String(t['Prioridad']), tecnico: String(t['Técnico asignado'] || ''), estatus: est,
         solicitud: tipoDe_(t), perifericos: String(t['Periféricos'] || ''), licencia: String(t['Licencia'] || ''),
-      cantidad: String(t['Cantidad equipos'] || ''), equipoInterno: String(t['Equipo interno'] || ''),
+        cantidad: String(t['Cantidad equipos'] || ''), equipoInterno: String(t['Equipo interno'] || ''),
         limite: fmt_(t['Fecha límite SLA']), cierre: fmt_(t['Fecha cierre']), obs: String(t['Observaciones'] || ''),
         atencion: fmt_(t['Fecha de atencion']), sitio: String(t['Atencion en sitio'] || ''),
         visita: fmt_(t['Fecha de la visita']), garantia: String(t['Garantia'] || ''), alerta: fmt_(t[COL_ALERTA]),
+        etapaGar: String(t['Etapa garantía'] || ''),
         abierto: abierto,
         vencido: abierto && !!lim && lim < ahora,
         sinResp: abierto && ESTATUS_SIN_RESPUESTA.indexOf(est) >= 0 && !atencion && !!fecha && ahora - fecha >= limAlerta
@@ -1330,6 +1354,7 @@ function getDashboardData(clave) {
         // Días calendario entre el reporte y la fecha de atención (0 = el mismo día)
         respDias: fecha && atencion ? Math.max(0, diaN_(atencion) - diaN_(fecha)) : null,
         cierre: ms_(t['Fecha cierre']), visita: ms_(t['Fecha de la visita']),
+        etapaGar: String(t['Etapa garantía'] || ''), origen: String(t['Ticket origen'] || ''),
         garantia: String(t['Garantia'] || '').trim(), sitio: String(t['Atencion en sitio'] || '').trim(),
         obs: String(t['Observaciones'] || '').trim(),
         alerta: ms_(t[COL_ALERTA])
@@ -1340,7 +1365,8 @@ function getDashboardData(clave) {
     });
     return {
       ok: true, ahora: Date.now(), tickets: tickets, tecnicos: tecnicos, regiones: REGIONES,
-      abiertos: ESTATUS_ABIERTOS, sinRespuesta: ESTATUS_SIN_RESPUESTA, tipos: TIPOS_SOLICITUD,
+      abiertos: ESTATUS_ABIERTOS, sinRespuesta: ESTATUS_SIN_RESPUESTA,
+      tipos: TIPOS_SOLICITUD.concat([TIPO_GARANTIA]),
       horasAlerta: HORAS_SIN_RESPUESTA, horasRepetir: HORAS_REPETIR_ALERTA,
       minutosRevision: MINUTOS_REVISION, alertasActivas: alertasActivas_()
     };
@@ -1481,6 +1507,7 @@ function enviarAlerta_(t, dias, tecnico, correoTec, admin) {
   }
   return false;
 }
+
 /* ===================== SUSTITUCIÓN Y APROBACIÓN ===================== */
 
 function errCampo_(msg, campo) { const e = new Error(msg); e.campo = campo; return e; }
@@ -1651,5 +1678,116 @@ function aprobarDesdeDashboard(clave, id) {
     return aprobar_(String(id), 'Dashboard');
   } catch (e) {
     return { ok: false, error: e.message };
+  }
+}
+
+/* ===================== TICKET DE GARANTÍA ===================== */
+
+function crearTicketGarantia(id, tk, d) {
+  let lock = null;
+  try {
+    if (!tokenValido_(id, tk)) throw new Error('Enlace no válido. Ábrelo desde el botón del correo más reciente.');
+    d = d || {};
+    const pieza = String(d.pieza || '').trim().slice(0, 300);
+    const mindary = String(d.mindary || '').trim();
+    if (!pieza) throw errCampo_('Indica la pieza o equipo solicitado.', 'gPieza');
+    if (['Sí', 'No'].indexOf(mindary) < 0) throw errCampo_('Indica si se reportó a Mindary.', 'gMindary');
+    const fSol = parseFecha_(d.fecha, 'fecha de la solicitud') || new Date();
+    if (diaN_(fSol) > diaN_(new Date())) throw errCampo_('La fecha de la solicitud no puede ser futura.', 'gFecha');
+
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    const sh = hoja_('TICKETS');
+    COLS_GAR.forEach(function (c) { asegurarColumna_(sh, c); });
+    const tickets = leer_('TICKETS');
+    const o = tickets.filter(function (x) { return String(x['ID_Ticket']) === String(id); })[0];
+    if (!o) throw new Error('No se encontró el ticket ' + id + '.');
+    if (String(o['Aprobación'] || '') !== 'Aprobada') throw new Error('La sustitución aún no está aprobada.');
+    if (String(o['Ticket garantía'] || '')) throw new Error('Ya existe el ticket de garantía ' + o['Ticket garantía'] + '.');
+
+    let max = 0;
+    tickets.forEach(function (t) {
+      const n = parseInt(String(t['ID_Ticket']).replace(/\D/g, ''), 10);
+      if (n > max) max = n;
+    });
+    const nuevo = 'TK-' + ('0000' + (max + 1)).slice(-4);
+
+    const coord = leer_('TECNICOS').filter(function (x) {
+      return String(x['Nombre']).trim().toLowerCase() === COORDINADOR_ST.toLowerCase();
+    })[0] || null;
+    const correoCoord = coord ? String(coord['Correo'] || '').trim() : '';
+
+    const ahora = new Date();
+    const limite = new Date(ahora.getTime() + DIAS_GARANTIA * 864e5);
+    const etapa = mindary === 'Sí' ? 'Reportado a Mindary' : 'Pendiente de reportar';
+    const tipoSust = String(o['Sustitución']) === SUST_PIEZA ? 'pieza' : 'equipo';
+    const desc = 'Garantía de ' + tipoSust + ': ' + pieza + ' (ticket origen ' + id + ').';
+
+    appendPorEncabezado_(sh, {
+      'ID_Ticket': nuevo, 'Fecha': ahora, 'Cliente': seguro_(o['Cliente']), 'Contacto': seguro_(o['Contacto']),
+      'Teléfono': texto_(o['Teléfono']), 'Correo': '', 'Estado': o['Estado'], 'Región': o['Región'],
+      'Equipo': seguro_(o['Equipo']), 'Serial': texto_(o['Serial']), 'Descripción': seguro_(desc),
+      'Prioridad': 'P4', 'Técnico asignado': COORDINADOR_ST, 'Correo técnico': correoCoord,
+      'Estatus': 'Esperando repuesto', 'Fecha límite SLA': limite, 'Solicitud': TIPO_GARANTIA,
+      'Observaciones': '[' + fmt_(ahora) + ' · Sistema] Ticket creado desde ' + id + '. Etapa: ' + etapa + '.',
+      'Ticket origen': id, 'Pieza garantía': seguro_(pieza), 'Reportado Mindary': mindary,
+      'Etapa garantía': etapa, 'Fecha solicitud garantía': fSol
+    });
+    escribir_(sh, o._fila, { 'Ticket garantía': nuevo });
+    SpreadsheetApp.flush();
+    lock.releaseLock();
+    lock = null;
+
+    if (correoCoord) {
+      try {
+        enviarTecnico_({
+          id: nuevo, tipo: TIPO_GARANTIA, cliente: o['Cliente'], contacto: o['Contacto'], telefono: o['Teléfono'],
+          estado: o['Estado'], region: o['Región'], equipo: o['Equipo'], serial: o['Serial'], prioridad: 'P4',
+          urgTexto: 'Seguimiento de garantía (vence en ' + DIAS_GARANTIA + ' días)', limite: fmt_(limite), descripcion: desc
+        }, { 'Correo': correoCoord });
+      } catch (e) { console.error('Correo garantía: ' + e.message); }
+    }
+    return { ok: true, id: nuevo, t: token_(nuevo), asignado: COORDINADOR_ST, limite: fmt_(limite) };
+  } catch (e) {
+    return { ok: false, error: e.message, campo: e.campo || '' };
+  } finally {
+    if (lock) lock.releaseLock();
+  }
+}
+
+// Seguimiento: Reportado a Mindary -> Enviado DHL -> Aduana -> BNH (al llegar a BNH se cierra)
+function guardarSeguimientoGarantia(id, tk, etapa, nota) {
+  let lock = null;
+  try {
+    if (!tokenValido_(id, tk)) throw new Error('Enlace no válido. Ábrelo desde el botón del correo más reciente.');
+    etapa = String(etapa || '').trim();
+    if (ETAPAS_GARANTIA.indexOf(etapa) < 0) throw new Error('Etapa no válida.');
+    nota = String(nota || '').trim().slice(0, 500);
+
+    lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    const t = buscarTicket_(id);
+    if (tipoDe_(t) !== TIPO_GARANTIA) throw new Error('Este ticket no es de garantía.');
+    if (String(t['Estatus']) === 'Cerrado') throw new Error('Este ticket ya está cerrado.');
+
+    const ahora = new Date();
+    const llego = etapa === 'BNH';
+    const linea = '[' + fmt_(ahora) + ' · Garantía] Etapa: ' + etapa + (nota ? ' · ' + nota : '') + (llego ? ' · Llegó a BNH, ticket cerrado.' : '');
+    const previo = String(t['Observaciones'] || '');
+    const cambios = {
+      'Etapa garantía': etapa,
+      'Reportado Mindary': etapa === 'Pendiente de reportar' ? 'No' : 'Sí',
+      'Estatus': llego ? 'Cerrado' : 'Esperando repuesto',
+      'Fecha cierre': llego ? ahora : '',
+      'Observaciones': seguro_(previo ? previo + '\n' + linea : linea)
+    };
+    if (!aFecha_(t['Fecha de atencion'])) cambios['Fecha de atencion'] = ahora;
+    escribir_(hoja_('TICKETS'), t._fila, cambios);
+    SpreadsheetApp.flush();
+    return { ok: true, etapa: etapa, estatus: cambios['Estatus'], cerrado: llego };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  } finally {
+    if (lock) lock.releaseLock();
   }
 }
