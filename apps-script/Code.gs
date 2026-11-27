@@ -30,13 +30,13 @@ const H_TICKETS = ['ID_Ticket', 'Fecha', 'Cliente', 'Contacto', 'Teléfono', 'Co
   'Atencion en sitio', 'Fecha de la visita', 'Última alerta', 'Solicitud', 'Periféricos', 'Licencia',
   'Cantidad equipos', 'Equipo interno',
   'Sustitución', 'Detalle sustitución', 'Aprobación', 'Fecha solicitud aprobación', 'Fecha aprobación', 'Aprobado por',
-  'Ticket garantía', 'Ticket origen', 'Pieza garantía', 'Reportado Mindary', 'Etapa garantía', 'Fecha solicitud garantía'];
+  'Ticket garantía', 'Ticket origen', 'Pieza garantía', 'Reportado Mindary', 'Etapa garantía', 'Fecha solicitud garantía','Guía DHL'];
 
 const TIPO_GARANTIA = 'Ticket de garantía';
 const COORDINADOR_ST = 'Coordinador ST';   // debe existir igual en la hoja TECNICOS
 const DIAS_GARANTIA = 60;                  // vencimiento (1 a 2 meses)
 const ETAPAS_GARANTIA = ['Pendiente de reportar', 'Reportado a Mindary', 'Enviado DHL', 'Aduana', 'BNH'];
-const COLS_GAR = ['Ticket garantía', 'Ticket origen', 'Pieza garantía', 'Reportado Mindary', 'Etapa garantía', 'Fecha solicitud garantía'];
+const COLS_GAR = ['Ticket garantía', 'Ticket origen', 'Pieza garantía', 'Reportado Mindary', 'Etapa garantía', 'Fecha solicitud garantía','Guía DHL'];
 const SUST_PIEZA = 'Cambio de pieza';
 const SUST_EQUIPO = 'Cambio de equipo';
 const SUSTITUCIONES = [SUST_PIEZA, SUST_EQUIPO];
@@ -107,6 +107,7 @@ function apiPermitida_(fn) {
     guardarSeguimientoGarantia: guardarSeguimientoGarantia,
     solicitarAprobacion: solicitarAprobacion,
     rechazarDesdeDashboard: rechazarDesdeDashboard,
+    rastrearDHL: rastrearDHL,
     aprobarDesdeDashboard: aprobarDesdeDashboard,
     ping: function () { return { ok: true, empresa: EMPRESA, hora: fmt_(new Date()) }; }
   }[fn] || null;
@@ -808,6 +809,7 @@ function getTicketTecnico(id, tk) {
       origenTk: t['Ticket origen'] ? token_(String(t['Ticket origen'])) : '',
       piezaGar: String(t['Pieza garantía'] || ''),
       etapaGar: String(t['Etapa garantía'] || ''),
+      guiaDhl: String(t['Guía DHL'] || ''),
       etapasGar: ETAPAS_GARANTIA,
       urgencias: URGENCIAS.map(function (u) { return { id: u.id, texto: u.texto, horas: u.horas }; })
     };
@@ -854,7 +856,8 @@ function guardarTicketTecnico(id, tk, d) {
     const s = sustitucionDatos_(t, d.sustitucion, d.sustDetalle);
     const aprobActual = String(t['Aprobación'] || '');
     const cambioSust = s.sust !== String(t['Sustitución'] || '') || s.detalle !== String(t['Detalle sustitución'] || '');
-    if (cambioSust && (aprobActual === 'Pendiente' || aprobActual === 'Rechazada')) { cambios['Aprobación'] = ''; aprobNueva = ''; }
+    // Una sustitución ya aprobada no se puede cambiar desde la ficha
+    if (cambioSust && aprobActual === 'Aprobada') err('La sustitución ya fue aprobada; no se puede modificar.', 'sustitucion');
     if (fAtencion && fRep && diaN_(fAtencion) < diaN_(fRep)) err('La atención no puede ser anterior al reporte (' + fmtDia_(fRep) + ').', 'fechaAtencion');
 
     const sh = hoja_('TICKETS');
@@ -878,9 +881,12 @@ function guardarTicketTecnico(id, tk, d) {
       if (fRep) { limite = new Date(fRep.getTime() + urgencia_(prioridad).horas * 3600000); cambios['Fecha límite SLA'] = limite; }
     }
 
-    // Si cambia la sustitución mientras había una solicitud pendiente, esa solicitud deja de valer
+    // Si cambia la sustitución mientras había una solicitud pendiente o rechazada, esa solicitud deja de valer
     let aprobNueva = aprobActual;
-    if (cambioSust && aprobActual === 'Pendiente') { cambios['Aprobación'] = ''; aprobNueva = ''; }
+    if (cambioSust && (aprobActual === 'Pendiente' || aprobActual === 'Rechazada')) {
+      cambios['Aprobación'] = '';
+      aprobNueva = '';
+    }
 
     escribir_(sh, t._fila, cambios);
     SpreadsheetApp.flush();
@@ -1775,24 +1781,42 @@ function crearTicketGarantia(id, tk, d) {
 }
 
 // Seguimiento: Reportado a Mindary -> Enviado DHL -> Aduana -> BNH (al llegar a BNH se cierra)
-function guardarSeguimientoGarantia(id, tk, etapa, nota) {
+function guardarSeguimientoGarantia(id, tk, etapa, nota, guia) {
   let lock = null;
   try {
-    if (!tokenValido_(id, tk)) throw new Error('Enlace no válido. Ábrelo desde el botón del correo más reciente.');
+    // 1. Validaciones (antes de tocar la hoja)
+    if (!tokenValido_(id, tk)) {
+      throw new Error('Enlace no válido. Ábrelo desde el botón del correo más reciente.');
+    }
+
     etapa = String(etapa || '').trim();
     if (ETAPAS_GARANTIA.indexOf(etapa) < 0) throw new Error('Etapa no válida.');
-    nota = String(nota || '').trim().slice(0, 500);
 
+    nota = String(nota || '').trim().slice(0, 500);
+    guia = String(guia || '').replace(/\D/g, '').slice(0, 20);
+
+    // 2. Lock para evitar escrituras simultáneas
     lock = LockService.getScriptLock();
     lock.waitLock(20000);
+
+    const sh = hoja_('TICKETS');
+    asegurarColumna_(sh, 'Guía DHL');
+
     const t = buscarTicket_(id);
     if (tipoDe_(t) !== TIPO_GARANTIA) throw new Error('Este ticket no es de garantía.');
     if (String(t['Estatus']) === 'Cerrado') throw new Error('Este ticket ya está cerrado.');
 
+    // 3. Armar cambios
     const ahora = new Date();
     const llego = etapa === 'BNH';
-    const linea = '[' + fmt_(ahora) + ' · Garantía] Etapa: ' + etapa + (nota ? ' · ' + nota : '') + (llego ? ' · Llegó a BNH, ticket cerrado.' : '');
+
+    const linea = '[' + fmt_(ahora) + ' · Garantía] Etapa: ' + etapa
+      + (guia ? ' · Guía DHL: ' + guia : '')
+      + (nota ? ' · ' + nota : '')
+      + (llego ? ' · Llegó a BNH, ticket cerrado.' : '');
+
     const previo = String(t['Observaciones'] || '');
+
     const cambios = {
       'Etapa garantía': etapa,
       'Reportado Mindary': etapa === 'Pendiente de reportar' ? 'No' : 'Sí',
@@ -1800,9 +1824,14 @@ function guardarSeguimientoGarantia(id, tk, etapa, nota) {
       'Fecha cierre': llego ? ahora : '',
       'Observaciones': seguro_(previo ? previo + '\n' + linea : linea)
     };
+
+    if (guia) cambios['Guía DHL'] = texto_(guia); // no pisa la guía previa si viene vacía
     if (!aFecha_(t['Fecha de atencion'])) cambios['Fecha de atencion'] = ahora;
-    escribir_(hoja_('TICKETS'), t._fila, cambios);
+
+    // 4. Guardar
+    escribir_(sh, t._fila, cambios);
     SpreadsheetApp.flush();
+
     return { ok: true, etapa: etapa, estatus: cambios['Estatus'], cerrado: llego };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -1810,6 +1839,50 @@ function guardarSeguimientoGarantia(id, tk, etapa, nota) {
     if (lock) lock.releaseLock();
   }
 }
+
+// Consulta el rastreo en DHL (API Shipment Tracking - Unified)
+function rastrearDHL(id, tk, guia) {
+  try {
+    if (!tokenValido_(id, tk)) throw new Error('Enlace no válido.');
+    guia = String(guia || '').replace(/\D/g, '');
+    if (guia.length < 8) throw new Error('Escribe un número de guía válido.');
+    const key = propiedad_('DHL_API_KEY');
+    if (!key) throw new Error('Falta DHL_API_KEY en las propiedades del script.');
+
+    const cache = CacheService.getScriptCache(), ck = 'dhl_' + guia;
+    const previo = cache.get(ck);
+    if (previo) return JSON.parse(previo);
+
+    const r = UrlFetchApp.fetch('https://api-eu.dhl.com/track/shipments?trackingNumber=' + guia, {
+      headers: { 'DHL-API-Key': key, 'Accept': 'application/json' },
+      muteHttpExceptions: true
+    });
+    const code = r.getResponseCode();
+    if (code === 404) return { ok: true, encontrado: false, guia: guia };
+    if (code === 401) throw new Error('La API Key de DHL no es válida.');
+    if (code === 429) throw new Error('DHL limitó las consultas. Intenta en un minuto.');
+    if (code !== 200) throw new Error('DHL respondió con error (' + code + ').');
+
+    const s = (JSON.parse(r.getContentText()).shipments || [])[0];
+    if (!s) return { ok: true, encontrado: false, guia: guia };
+    const ev = function (e) {
+      return { fecha: e.timestamp || '', texto: e.description || e.status || '',
+        lugar: (e.location && e.location.address && e.location.address.addressLocality) || '' };
+    };
+    const out = {
+      ok: true, encontrado: true, guia: guia,
+      estado: (s.status && (s.status.description || s.status.status)) || '',
+      codigo: (s.status && s.status.statusCode) || '',      // pre-transit, transit, delivered...
+      ultimo: s.status ? ev(s.status) : null,
+      eventos: (s.events || []).slice(0, 12).map(ev)
+    };
+    cache.put(ck, JSON.stringify(out), 600);   // 10 min para no gastar cuota
+    return out;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 // Rechaza la solicitud y avisa al técnico. Sirve para el correo y para el dashboard.
 function rechazar_(id, quien, motivo) {
   let lock = null;
