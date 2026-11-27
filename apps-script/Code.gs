@@ -1387,7 +1387,13 @@ function getDashboardData(clave) {
 /* ===================== ALERTAS: CASOS SIN RESPUESTA ===================== */
 
 function alertasActivas_() {
-  return ScriptApp.getProjectTriggers().some(function (tr) { return tr.getHandlerFunction() === 'revisarSinRespuesta'; });
+  try {
+    return ScriptApp.getProjectTriggers().some(function (t) {
+      return t.getHandlerFunction() === 'revisarAlertas'; // el nombre de tu función de alertas
+    });
+  } catch (e) {
+    return false; // sin permiso de triggers: el dashboard carga igual
+  }
 }
 
 // Lo ejecuta el activador cada MINUTOS_REVISION minutos
@@ -1956,4 +1962,8 @@ function rechazarDesdeDashboard(clave, id, motivo) {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+function probarPermisos() {
+  ScriptApp.getProjectTriggers();
+  UrlFetchApp.fetch('https://www.google.com');
 }
