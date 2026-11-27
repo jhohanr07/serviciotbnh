@@ -17,12 +17,12 @@ const PERMITIDAS = new Set([
   'getTicketTecnico', 'guardarTicketTecnico',
   'panelLogin', 'getPanelData', 'actualizarTicket', 'reenviarTecnico', 'getDashboardData', 'enviarAlertasAhora',
   'tecnicoSolicitarCodigo', 'tecnicoVerificarCodigo', 'getPanelTecnico','solicitarAprobacion', 'aprobarDesdeDashboard',
-  'crearTicketGarantia', 'guardarSeguimientoGarantia','rechazarDesdeDashboard',
+  'crearTicketGarantia', 'guardarSeguimientoGarantia','rechazarDesdeDashboard', 'crearTicketGarantia', 'guardarSeguimientoGarantia', 'rechazarDesdeDashboard', 'rastrearDHL',
   'ping'
 ]);
 
 // Límite por IP y por minuto (mejor esfuerzo: vive mientras la instancia esté activa)
-const LIMITES = { crearTicket: 6, consultarTicket: 20, panelLogin: 10, tecnicoSolicitarCodigo: 4, tecnicoVerificarCodigo: 10, _: 120 };
+const LIMITES = { crearTicket: 6, consultarTicket: 20, panelLogin: 10, tecnicoSolicitarCodigo: 4, tecnicoVerificarCodigo: 10, _: 120 , rastrearDHL: 15, _: 120 };
 const visitas = new Map();
 
 function excedeLimite(ip, fn) {
