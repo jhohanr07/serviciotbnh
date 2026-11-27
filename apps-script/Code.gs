@@ -1385,6 +1385,15 @@ function getDashboardData(clave) {
 }
 
 /* ===================== ALERTAS: CASOS SIN RESPUESTA ===================== */
+function alertasActivas_() {
+  try {
+    return ScriptApp.getProjectTriggers().some(function (t) {
+      return t.getHandlerFunction() === 'revisarAlertas'; // nombre real de tu función de alertas
+    });
+  } catch (e) {
+    return false;
+  }
+}
 
 function instalarTriggerAlertas() { // ejecutar una vez desde el editor
   const existe = ScriptApp.getProjectTriggers()
