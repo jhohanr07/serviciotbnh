@@ -1386,14 +1386,17 @@ function getDashboardData(clave) {
 
 /* ===================== ALERTAS: CASOS SIN RESPUESTA ===================== */
 
-function hayTriggerAlertas_() {
-  try {
-    return ScriptApp.getProjectTriggers().some(function (t) {
-      return t.getHandlerFunction() === 'revisarAlertas'; // pon aquí el nombre real de tu función de alertas
-    });
-  } catch (e) {
-    return false;
+function instalarTriggerAlertas() { // ejecutar una vez desde el editor
+  const existe = ScriptApp.getProjectTriggers()
+    .some(t => t.getHandlerFunction() === 'revisarAlertas');
+  if (!existe) {
+    ScriptApp.newTrigger('revisarAlertas').timeBased().everyHours(1).create();
   }
+  PropertiesService.getScriptProperties().setProperty('ALERTAS_ACTIVAS', 'true');
+}
+
+function hayTriggerAlertas_() {
+  return PropertiesService.getScriptProperties().getProperty('ALERTAS_ACTIVAS') === 'true';
 }
 
 // Lo ejecuta el activador cada MINUTOS_REVISION minutos
