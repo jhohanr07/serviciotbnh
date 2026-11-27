@@ -1386,13 +1386,13 @@ function getDashboardData(clave) {
 
 /* ===================== ALERTAS: CASOS SIN RESPUESTA ===================== */
 
-function alertasActivas_() {
+function hayTriggerAlertas_() {
   try {
     return ScriptApp.getProjectTriggers().some(function (t) {
-      return t.getHandlerFunction() === 'revisarAlertas'; // el nombre de tu función de alertas
+      return t.getHandlerFunction() === 'revisarAlertas'; // pon aquí el nombre real de tu función de alertas
     });
   } catch (e) {
-    return false; // sin permiso de triggers: el dashboard carga igual
+    return false;
   }
 }
 
@@ -1966,4 +1966,6 @@ function rechazarDesdeDashboard(clave, id, motivo) {
 function probarPermisos() {
   ScriptApp.getProjectTriggers();
   UrlFetchApp.fetch('https://www.google.com');
+  SpreadsheetApp.getActive();
+  MailApp.getRemainingDailyQuota();
 }
